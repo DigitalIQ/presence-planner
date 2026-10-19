@@ -53,22 +53,91 @@ def round_floats(obj):
 
 # --- detect samples --------------------------------------------------------------------------------------
 
+
 def _extra_sensors(profiles: dict) -> dict:
     """Hypothetical sensors that exercise tilt, other profiles and the ceiling cone (not part of the demo plan)."""
+
     def mk(**kw):
         base = {"floor_id": "demo", "active": True}
         base.update(kw)
         return resolve_sensor(base, profiles)
 
     return {
-        "living_tilt30": mk(entity_id="binary_sensor.extra_living_tilt", x=0.05, z=2.1, height=2.2, phi=0, tilt=30, mount="wall", profile="everything_presence_one"),
-        "living_ceiling_fp400": mk(entity_id="binary_sensor.extra_living_ceiling", x=2.5, z=2.1, height=2.6, phi=0, tilt=90, mount="ceiling", profile="aqara_fp400"),
-        "kitchen_wall": mk(entity_id="binary_sensor.extra_kitchen_wall", x=1.5, z=6.97, height=1.9, phi=270, tilt=10, mount="wall", profile="aqara_fp300"),
-        "bedroom_pir": mk(entity_id="binary_sensor.extra_bedroom_pir", x=5.1, z=2.6, height=1.5, phi=0, tilt=0, mount="wall", profile="aqara_p1"),
-        "open_room": mk(entity_id="binary_sensor.extra_open_room", x=0.1, z=2.1, height=1.9, phi=0, tilt=10, mount="wall", profile="aqara_fp300"),
+        "living_tilt30": mk(
+            entity_id="binary_sensor.extra_living_tilt",
+            x=0.05,
+            z=2.1,
+            height=2.2,
+            phi=0,
+            tilt=30,
+            mount="wall",
+            profile="everything_presence_one",
+        ),
+        "living_ceiling_fp400": mk(
+            entity_id="binary_sensor.extra_living_ceiling",
+            x=2.5,
+            z=2.1,
+            height=2.6,
+            phi=0,
+            tilt=90,
+            mount="ceiling",
+            profile="aqara_fp400",
+        ),
+        "kitchen_wall": mk(
+            entity_id="binary_sensor.extra_kitchen_wall",
+            x=1.5,
+            z=6.97,
+            height=1.9,
+            phi=270,
+            tilt=10,
+            mount="wall",
+            profile="aqara_fp300",
+        ),
+        "bedroom_pir": mk(
+            entity_id="binary_sensor.extra_bedroom_pir",
+            x=5.1,
+            z=2.6,
+            height=1.5,
+            phi=0,
+            tilt=0,
+            mount="wall",
+            profile="aqara_p1",
+        ),
+        "open_room": mk(
+            entity_id="binary_sensor.extra_open_room",
+            x=0.1,
+            z=2.1,
+            height=1.9,
+            phi=0,
+            tilt=10,
+            mount="wall",
+            profile="aqara_fp300",
+        ),
         # Free of walls: shows the edge taper because the reach (3 m) is short compared with the sample distances.
-        "outdoor": mk(entity_id="binary_sensor.extra_outdoor", x=-8.0, z=2.0, height=2.4, phi=0, tilt=0, mount="wall", profile="custom", fov_h=120, fov_v=60, reach=3.0),
-        "custom_assumed": mk(entity_id="binary_sensor.extra_custom", x=2.0, z=3.0, height=1.9, phi=45, tilt=20, mount="wall", profile="custom", fov_v=None),
+        "outdoor": mk(
+            entity_id="binary_sensor.extra_outdoor",
+            x=-8.0,
+            z=2.0,
+            height=2.4,
+            phi=0,
+            tilt=0,
+            mount="wall",
+            profile="custom",
+            fov_h=120,
+            fov_v=60,
+            reach=3.0,
+        ),
+        "custom_assumed": mk(
+            entity_id="binary_sensor.extra_custom",
+            x=2.0,
+            z=3.0,
+            height=1.9,
+            phi=45,
+            tilt=20,
+            mount="wall",
+            profile="custom",
+            fov_v=None,
+        ),
     }
 
 
@@ -134,10 +203,19 @@ def detect_samples(plan: dict, demo_sensors: list) -> list:
             add(
                 "scatter",
                 s,
-                [rng.uniform(bounds["x0"] + 0.4, bounds["x1"] - 0.4), rng.choice([0.5, 0.9, 1.3]), rng.uniform(bounds["z0"] + 0.4, bounds["z1"] - 0.4)],
+                [
+                    rng.uniform(bounds["x0"] + 0.4, bounds["x1"] - 0.4),
+                    rng.choice([0.5, 0.9, 1.3]),
+                    rng.uniform(bounds["z0"] + 0.4, bounds["z1"] - 0.4),
+                ],
             )
     # 2. behind thin and brick walls: straight lines through the hall/bath wall, the kitchen/hall wall and the living/kitchen wall
-    hall, bath, kitchen, living = sensors["demo_hall_motion"], sensors["demo_bath_presence"], sensors["demo_kitchen_presence"], sensors["demo_living_presence"]
+    hall, bath, kitchen, living = (
+        sensors["demo_hall_motion"],
+        sensors["demo_bath_presence"],
+        sensors["demo_kitchen_presence"],
+        sensors["demo_living_presence"],
+    )
     for dz in (-1.2, -0.8, -0.4, 0.0, 0.4, 0.8, 1.2):
         add("thin_wall", hall, [5.15, 1.3, 5.6 + dz])
         add("thin_wall", hall, [5.6, 1.3, 5.6 + dz])
@@ -173,7 +251,14 @@ def detect_samples(plan: dict, demo_sensors: list) -> list:
     add("door_dict", hall, [4.0, 1.3, 3.2], doors={"d_kitchen": False})
     # 4. near the edges of the field of view (yaw, pitch) and along the reach ramp, in open space
     open_room = extras["open_room"]
-    for s in [open_room, extras["living_tilt30"], extras["bedroom_pir"], extras["custom_assumed"], extras["kitchen_wall"], extras["outdoor"]]:
+    for s in [
+        open_room,
+        extras["living_tilt30"],
+        extras["bedroom_pir"],
+        extras["custom_assumed"],
+        extras["kitchen_wall"],
+        extras["outdoor"],
+    ]:
         half_h, half_v = s["fov_h"] / 2, s["fov_v"] / 2
         lengths = (1.8, 2.4, 2.9) if s is extras["outdoor"] else (1.6, 2.4)
         for dy in (-20, -14, -8, -1, 1):
@@ -224,6 +309,7 @@ def detect_samples(plan: dict, demo_sensors: list) -> list:
 
 # --- evaluate / spill / optimize -----------------------------------------------------------------------------
 
+
 def evaluate_golden(plan: dict, demo_sensors: list) -> dict:
     model = build_model(plan, "demo")
     profiles = load_profiles()
@@ -266,7 +352,10 @@ def optimize_golden(plan: dict) -> dict:
         for r in model.rooms:
             res = optimize(model, r["id"], profile, dict(OPT_OPTS), 1.0)
             best = res[0]
-            rooms[r["id"]] = {"best": round_floats(best), "tied_with_best": sum(1 for c in res if abs(c["score"] - best["score"]) < 1e-9)}
+            rooms[r["id"]] = {
+                "best": round_floats(best),
+                "tied_with_best": sum(1 for c in res if abs(c["score"] - best["score"]) < 1e-9),
+            }
         if key is None:
             out["profile"] = profile
             out["rooms"] = rooms
@@ -286,6 +375,7 @@ def generate() -> dict:
 
 
 # --- writer ----------------------------------------------------------------------------------------------------
+
 
 def dumps(obj, depth: int = 0) -> str:
     """JSON with the first two levels expanded and deeper levels on one line (stable and diff friendly)."""

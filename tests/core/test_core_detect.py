@@ -157,7 +157,16 @@ def test_wall_attenuation_applies_at_every_height_and_for_ceiling_mounts():
 
 
 def test_closed_door_costs_6_db_and_open_door_nothing():
-    door = {"id": "d", "room_id": "a", "edge": 1, "offset": 2.5, "width": 1.0, "type": "door", "hinge": "left", "swing": "in"}
+    door = {
+        "id": "d",
+        "room_id": "a",
+        "edge": 1,
+        "offset": 2.5,
+        "width": 1.0,
+        "type": "door",
+        "hinge": "left",
+        "swing": "in",
+    }
     m = two_rooms(0.3, openings=[door])
     s = sensor(2, 2.5)
     p = (5.5 + 1.0, 1.9, 2.5)  # d = 4.5 m through the doorway
@@ -176,7 +185,16 @@ def test_closed_door_costs_6_db_and_open_door_nothing():
 
 
 def test_door_leading_outside_does_not_open_the_wall_for_other_rooms():
-    door = {"id": "d", "room_id": "a", "edge": 1, "offset": 2.5, "width": 1.0, "type": "door", "hinge": "left", "swing": "in"}
+    door = {
+        "id": "d",
+        "room_id": "a",
+        "edge": 1,
+        "offset": 2.5,
+        "width": 1.0,
+        "type": "door",
+        "hinge": "left",
+        "swing": "in",
+    }
     m = two_rooms(0.3, openings=[door])
     assert m.doors[0]["outside"] is False
     ext = two_rooms(0.3, openings=[{"id": "e", "room_id": "a", "edge": 0, "offset": 2.5, "width": 1.0, "type": "door"}])
@@ -205,7 +223,9 @@ def test_tall_furniture_damps_a_ray_that_passes_below_its_top():
     assert detect(shelf, near_sensor, (5.6, 1.9, 2.5), {}) == pytest.approx(1.0)
 
 
-@pytest.mark.parametrize("ftype, h", [("lamp_floor", 1.8), ("plant", 1.7), ("rug", 2.0), ("coat_rack", 1.8), ("shower", 2.0), ("sofa", 0.85)])
+@pytest.mark.parametrize(
+    "ftype, h", [("lamp_floor", 1.8), ("plant", 1.7), ("rug", 2.0), ("coat_rack", 1.8), ("shower", 2.0), ("sofa", 0.85)]
+)
 def test_these_furniture_types_do_not_damp(ftype, h):
     s = sensor(2, 2.5)
     item = dict(SHELF, type=ftype, h=h)

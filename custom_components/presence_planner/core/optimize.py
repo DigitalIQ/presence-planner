@@ -217,7 +217,14 @@ def _wall_candidates(model: Model, room: dict) -> list:
             if _blocked_mount(model, room, x, z):
                 continue
             phi_n = math.degrees(math.atan2(sub["n"][1], sub["n"][0]))
-            out.append({"x": x, "z": z, "mount": "wall", "phis": [phi_n + d for d in range(-NORMAL_RANGE, NORMAL_RANGE + 1, DIR_STEP)]})
+            out.append(
+                {
+                    "x": x,
+                    "z": z,
+                    "mount": "wall",
+                    "phis": [phi_n + d for d in range(-NORMAL_RANGE, NORMAL_RANGE + 1, DIR_STEP)],
+                }
+            )
     return out
 
 
@@ -255,7 +262,14 @@ def _corner_candidates(model: Model, room: dict) -> list:
         if _blocked_mount(model, room, x, z):
             continue
         phi_b = math.degrees(math.atan2(n1[1] + n2[1], n1[0] + n2[0]))
-        out.append({"x": x, "z": z, "mount": "corner", "phis": [phi_b + d for d in range(-CORNER_RANGE, CORNER_RANGE + 1, DIR_STEP)]})
+        out.append(
+            {
+                "x": x,
+                "z": z,
+                "mount": "corner",
+                "phis": [phi_b + d for d in range(-CORNER_RANGE, CORNER_RANGE + 1, DIR_STEP)],
+            }
+        )
     return out
 
 
@@ -317,7 +331,16 @@ def optimize(
         height = room["height"] if ceiling else wall_h
         tilt = 90.0 if ceiling else WALL_TILT
         tpl = resolve_sensor(
-            {"entity_id": "candidate", "profile": prof["id"], "mount": c["mount"], "x": c["x"], "z": c["z"], "height": height, "tilt": tilt, "phi": 0.0},
+            {
+                "entity_id": "candidate",
+                "profile": prof["id"],
+                "mount": c["mount"],
+                "x": c["x"],
+                "z": c["z"],
+                "height": height,
+                "tilt": tilt,
+                "phi": 0.0,
+            },
             profiles,
         )
         data = _position_data(model, tg, c["x"], c["z"], height, float(tpl["reach"]), float(o["thin_db"]))

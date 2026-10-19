@@ -120,7 +120,9 @@ def evaluate(model: Model, sensors: list, opts: dict | None = None) -> dict:
             for m, i in enumerate(ids):
                 if q[pos[i]] > 0:
                     hit[m] = True
-        zones_out.append({"name": g["name"], "room": g["room"], "height": g["height"], "share": _r4(sum(hit) / len(ids))})
+        zones_out.append(
+            {"name": g["name"], "room": g["room"], "height": g["height"], "share": _r4(sum(hit) / len(ids))}
+        )
 
     result = {"rooms": rooms_out, "sensors": sensors_out, "zones": zones_out, "grid": {}}
     if o.get("grid"):
@@ -150,6 +152,8 @@ def _grid(model, sens, ctxs, sroom, rc_open, own_q, cells, by_room, heights) -> 
                     for j in range(n)
                     if sroom[j] != rid and ctxs[j].quality(x, h, z, rc_open[j]) > 0
                 ]
-                rows.append({"x": _r4(x), "z": _r4(z), "room": rid, "own": _r4(best), "own_sensor": who, "spill": spill})
+                rows.append(
+                    {"x": _r4(x), "z": _r4(z), "room": rid, "own": _r4(best), "own_sensor": who, "spill": spill}
+                )
         out[height_key(h)] = rows
     return out

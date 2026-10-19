@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
@@ -9,7 +10,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import DOMAIN, SIGNAL_UPDATED
+from .const import DOMAIN, SIGNAL_UPDATED, SOURCE_OWN
 from .devices import device_profiles
 from .export import ImportFormatError, import_data, to_neonplan_import
 from .neonplan import NeonPlanError
@@ -36,6 +37,22 @@ SENSOR_SCHEMA = vol.Schema(
         vol.Optional("active", default=True): bool,
     },
     extra=vol.ALLOW_EXTRA,
+)
+
+EXPORT_SENSORS_KEY = "presence_planner"
+_EXPORT_SENSOR_KEYS = (
+    "entity_id",
+    "x",
+    "z",
+    "height",
+    "phi",
+    "tilt",
+    "mount",
+    "profile",
+    "fov_h",
+    "fov_v",
+    "reach",
+    "active",
 )
 
 PLAN_SCHEMA = vol.Schema(
@@ -68,6 +85,18 @@ def _coordinator(
         connection.send_error(msg["id"], "not_loaded", "Presence Planner is not set up")
         return None
     return entries[0].runtime_data
+
+
+async def _after_write(hass: HomeAssistant, coordinator: PresencePlannerCoordinator) -> int:
+    """Wait for a reload the write started (rooms changed) and return the revision of the loaded entry.
+
+    Without the wait, the panel's next `get` lands in the middle of the reload and gets `not_loaded`.
+    """
+    task = coordinator.reload_task
+    if task is not None and not task.done():
+        await asyncio.shield(task)
+    entries = hass.config_entries.async_loaded_entries(DOMAIN)
+    return entries[0].runtime_data.revision if entries else coordinator.revision
 
 
 @websocket_api.websocket_command({vol.Required("type"): "presence_planner/get"})
@@ -123,7 +152,7 @@ async def ws_save_sensors(hass: HomeAssistant, connection: websocket_api.ActiveC
     except vol.Invalid as err:
         connection.send_error(msg["id"], "neonplan_rejected", str(err))
         return
-    connection.send_result(msg["id"], {"revision": coordinator.revision})
+    connection.send_result(msg["id"], {"revision": await _after_write(hass, coordinator)})
 
 
 @websocket_api.websocket_command(
@@ -136,7 +165,7 @@ async def ws_save_plan(hass: HomeAssistant, connection: websocket_api.ActiveConn
     if (coordinator := _coordinator(hass, connection, msg)) is None:
         return
     await coordinator.async_save_plan(msg["plan"])
-    connection.send_result(msg["id"], {"revision": coordinator.revision})
+    connection.send_result(msg["id"], {"revision": await _after_write(hass, coordinator)})
 
 
 @websocket_api.websocket_command({vol.Required("type"): "presence_planner/export", vol.Optional("plan"): PLAN_SCHEMA})
@@ -149,7 +178,39 @@ async def ws_export(hass: HomeAssistant, connection: websocket_api.ActiveConnect
     if not plan:
         connection.send_error(msg["id"], "no_plan", "There is no plan to export")
         return
-    connection.send_result(msg["id"], to_neonplan_import(plan))
+    data = to_neonplan_import(plan)
+    # The import format has no sensors. They travel in an extra key that NeonPlan ignores, keyed by floor index
+    # because the import format carries no floor ids.
+    floor_index = {f["id"]: i for i, f in enumerate(plan.get("floors") or [])}
+    raw = coordinator.store.own_sensors if coordinator.source == SOURCE_OWN else coordinator.sensors
+    sensors = [
+        {**{k: s[k] for k in _EXPORT_SENSOR_KEYS if s.get(k) is not None}, "floor_index": floor_index[s["floor_id"]]}
+        for s in raw
+        if s.get("floor_id") in floor_index
+    ]
+    if sensors:
+        data[EXPORT_SENSORS_KEY] = {"version": 1, "sensors": sensors}
+    connection.send_result(msg["id"], data)
+
+
+def _exported_sensors(data: dict[str, Any], plan: dict[str, Any], warnings: list[str]) -> list[dict[str, Any]]:
+    """Sensors from the extra key of an own export, with floor ids of the imported plan."""
+    extra = data.get(EXPORT_SENSORS_KEY)
+    if not isinstance(extra, dict) or not isinstance(extra.get("sensors"), list):
+        return []
+    floors = plan.get("floors") or []
+    sensors = []
+    for item in extra["sensors"]:
+        index = item.get("floor_index") if isinstance(item, dict) else None
+        if not isinstance(index, int) or not 0 <= index < len(floors):
+            warnings.append("sensor_floor_missing")
+            continue
+        record = {k: v for k, v in item.items() if k != "floor_index"}
+        try:
+            sensors.append(SENSOR_SCHEMA({**record, "floor_id": floors[index]["id"]}))
+        except vol.Invalid:
+            warnings.append(f"sensor_invalid:{record.get('entity_id')}")
+    return sensors
 
 
 @websocket_api.websocket_command({vol.Required("type"): "presence_planner/import", vol.Required("data"): dict})
@@ -164,7 +225,9 @@ async def ws_import(hass: HomeAssistant, connection: websocket_api.ActiveConnect
     except ImportFormatError as err:
         connection.send_error(msg["id"], "invalid_format", str(err))
         return
-    sensors = await coordinator.async_import(plan, building)
+    exported = _exported_sensors(msg["data"], plan, warnings) if building is None else []
+    sensors = await coordinator.async_import(plan, building, exported)
+    await _after_write(hass, coordinator)
     connection.send_result(msg["id"], {"plan": plan, "sensors": sensors, "warnings": warnings})
 
 

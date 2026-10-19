@@ -40,7 +40,16 @@ def test_detect_golden_has_enough_varied_samples():
     samples = data["samples"]
     assert len(samples) >= 300
     tags = {s["tag"] for s in samples}
-    assert {"thin_wall", "brick_wall", "door_open", "door_closed", "fov_edge_yaw", "fov_edge_pitch", "below", "ceiling_cone"} <= tags
+    assert {
+        "thin_wall",
+        "brick_wall",
+        "door_open",
+        "door_closed",
+        "fov_edge_yaw",
+        "fov_edge_pitch",
+        "below",
+        "ceiling_cone",
+    } <= tags
     qualities = [s["quality"] for s in samples]
     assert any(q == 0 for q in qualities) and any(0 < q < 1 for q in qualities) and any(q == 1 for q in qualities)
     for s in samples:
@@ -58,7 +67,9 @@ def test_door_state_matters_in_the_golden_samples():
 def test_evaluate_golden_holds_both_door_states():
     data = json.loads((golden.GOLDEN_DIR / "demo-evaluate.json").read_text(encoding="utf-8"))
     assert data["opts"]["cell"] == 0.1
-    assert set(data["open"]["rooms"]) == set(data["closed"]["rooms"]) == {"living", "bedroom", "kitchen", "hall", "bath"}
+    assert (
+        set(data["open"]["rooms"]) == set(data["closed"]["rooms"]) == {"living", "bedroom", "kitchen", "hall", "bath"}
+    )
     assert data["open"]["grid"] == {} and data["closed"]["grid"] == {}
 
 

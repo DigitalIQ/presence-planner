@@ -64,7 +64,13 @@ def test_every_demo_sensor_covers_its_own_room_clearly(result):
 
 def test_values_are_shares_rounded_to_four_decimals(result):
     for room in result["rooms"].values():
-        for v in [*room["coverage"].values(), *room["seen"].values(), room["misfire_risk"], room["coverage_mean"], *room["from"].values()]:
+        for v in [
+            *room["coverage"].values(),
+            *room["seen"].values(),
+            room["misfire_risk"],
+            room["coverage_mean"],
+            *room["from"].values(),
+        ]:
             assert 0.0 <= v <= 1.0
             assert v == round(v, 4)
 
@@ -139,7 +145,16 @@ def test_closed_doors_reduce_what_leaves_the_room(demo):
 def test_door_state_changes_the_view_of_a_sensor_that_looks_through_it():
     a = rect("a", 0, 0, 5, 5, [0.3] * 4)
     b = rect("b", 5, 0, 10, 5, [0.3] * 4)
-    door = {"id": "d", "room_id": "a", "edge": 1, "offset": 2.5, "width": 1.0, "type": "door", "hinge": "left", "swing": "in"}
+    door = {
+        "id": "d",
+        "room_id": "a",
+        "edge": 1,
+        "offset": 2.5,
+        "width": 1.0,
+        "type": "door",
+        "hinge": "left",
+        "swing": "in",
+    }
     model = build_model(make_plan([a, b], openings=[door]), "f")
     s = [sensor(1.0, 2.5, reach=8, height=1.9)]
     s[0]["entity_id"] = "binary_sensor.looker"
@@ -190,7 +205,20 @@ def test_grid_is_only_filled_on_request(demo):
 
 def test_sensors_may_come_unresolved_from_the_panel(demo):
     model, sensors = demo
-    bare = [{"entity_id": s["entity_id"], "floor_id": "demo", "x": s["x"], "z": s["z"], "height": s["height"], "phi": s["phi"], "tilt": s["tilt"], "mount": s["mount"], "profile": s["profile"]} for s in sensors]
+    bare = [
+        {
+            "entity_id": s["entity_id"],
+            "floor_id": "demo",
+            "x": s["x"],
+            "z": s["z"],
+            "height": s["height"],
+            "phi": s["phi"],
+            "tilt": s["tilt"],
+            "mount": s["mount"],
+            "profile": s["profile"],
+        }
+        for s in sensors
+    ]
     a = evaluate(model, bare, {"cell": 0.2})
     full = evaluate(model, [resolve_sensor(s, load_profiles()) for s in bare], {"cell": 0.2})
     assert a["rooms"]["bath"] == full["rooms"]["bath"]

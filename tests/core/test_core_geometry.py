@@ -97,12 +97,16 @@ def test_faces_follow_the_wall_rule():
     assert a_face[0]["n"] == pytest.approx([0, -1])
     assert b_face[0]["n"] == pytest.approx([0, 1])
     # exterior face sits on the polygon edge
-    top = [f for f in m.faces if f["room"] == "a" and f["a"][1] == pytest.approx(0.0) and f["b"][1] == pytest.approx(0.0)]
+    top = [
+        f for f in m.faces if f["room"] == "a" and f["a"][1] == pytest.approx(0.0) and f["b"][1] == pytest.approx(0.0)
+    ]
     assert len(top) == 1 and top[0]["n"] == pytest.approx([0, 1])
 
 
 def test_default_thickness_from_settings():
-    plan = make_plan([rect("a", 0, 0, 4, 3), rect("b", 4, 0, 8, 3)], settings={"wall_exterior": 0.24, "wall_interior": 0.12})
+    plan = make_plan(
+        [rect("a", 0, 0, 4, 3), rect("b", 4, 0, 8, 3)], settings={"wall_exterior": 0.24, "wall_interior": 0.12}
+    )
     m = build_model(plan, "f")
     assert find_band(m, 4 - 0.06, 4 + 0.06, 0, 3) is not None
     assert find_band(m, 0, 4, -0.24, 0) is not None
@@ -143,9 +147,37 @@ def test_cell_grid_spacing_and_room_origin():
 
 def test_door_is_cut_out_of_the_wall_and_window_becomes_glass():
     openings = [
-        {"id": "d1", "room_id": "b", "edge": 0, "offset": 1.5, "width": 0.9, "type": "door", "hinge": "left", "swing": "in", "contact": "binary_sensor.x"},
-        {"id": "w1", "room_id": "a", "edge": 0, "offset": 3.0, "width": 1.0, "type": "window", "sill": 0.9, "height": 1.2},
-        {"id": "d2", "room_id": "c", "edge": 2, "offset": 1.5, "width": 0.9, "type": "door", "hinge": "right", "swing": "out"},
+        {
+            "id": "d1",
+            "room_id": "b",
+            "edge": 0,
+            "offset": 1.5,
+            "width": 0.9,
+            "type": "door",
+            "hinge": "left",
+            "swing": "in",
+            "contact": "binary_sensor.x",
+        },
+        {
+            "id": "w1",
+            "room_id": "a",
+            "edge": 0,
+            "offset": 3.0,
+            "width": 1.0,
+            "type": "window",
+            "sill": 0.9,
+            "height": 1.2,
+        },
+        {
+            "id": "d2",
+            "room_id": "c",
+            "edge": 2,
+            "offset": 1.5,
+            "width": 0.9,
+            "type": "door",
+            "hinge": "right",
+            "swing": "out",
+        },
     ]
     m = three_rooms(openings=openings)
     door = next(d for d in m.doors if d["id"] == "d1")
@@ -153,7 +185,11 @@ def test_door_is_cut_out_of_the_wall_and_window_becomes_glass():
     assert door["a"] == pytest.approx([1.05, 3.0]) and door["b"] == pytest.approx([1.95, 3.0])
     # hinge left = start side, swing in = into room b (z > 3)
     assert door["hinge"] == pytest.approx([1.05, 3.0]) and door["tip"] == pytest.approx([1.05, 3.9])
-    spans = sorted((min(s["a"][0], s["b"][0]), max(s["a"][0], s["b"][0])) for s in m.segments if s["a"][1] == s["b"][1] == 3.0 and max(s["a"][0], s["b"][0]) <= 3.0)
+    spans = sorted(
+        (min(s["a"][0], s["b"][0]), max(s["a"][0], s["b"][0]))
+        for s in m.segments
+        if s["a"][1] == s["b"][1] == 3.0 and max(s["a"][0], s["b"][0]) <= 3.0
+    )
     assert [v for span in spans for v in span] == pytest.approx([0.0, 1.05, 1.95, 3.0])
     # window: stays a block wall, listed as glass
     assert find_segment(m, (0, 0), (6, 0))["k"] == "block"
@@ -197,7 +233,15 @@ def test_demo_model_structure():
     assert d["hinge"] == pytest.approx([3.6, 4.2]) and d["tip"] == pytest.approx([3.6, 3.4])
     assert d["rooms"] == ["living", "hall"]
     names = {(z["name"], z["room"]) for z in m.zones}
-    assert {("bed", "bedroom"), ("sofa", "living"), ("desk", "living"), ("dining", "kitchen"), ("kitchen", "kitchen"), ("wc", "bath"), ("entry", "hall")} <= names
+    assert {
+        ("bed", "bedroom"),
+        ("sofa", "living"),
+        ("desk", "living"),
+        ("dining", "kitchen"),
+        ("kitchen", "kitchen"),
+        ("wc", "bath"),
+        ("entry", "hall"),
+    } <= names
 
 
 def test_model_to_dict_is_json_serialisable_and_has_contract_keys():
@@ -205,7 +249,21 @@ def test_model_to_dict_is_json_serialisable_and_has_contract_keys():
     m = build_model(plan, "demo")
     d = model_to_dict(m)
     json.dumps(d)
-    for key in ("floor", "rooms", "bands", "faces", "segments", "doors", "windows", "glass", "freeWalls", "furniture", "zones", "cells", "bounds"):
+    for key in (
+        "floor",
+        "rooms",
+        "bands",
+        "faces",
+        "segments",
+        "doors",
+        "windows",
+        "glass",
+        "freeWalls",
+        "furniture",
+        "zones",
+        "cells",
+        "bounds",
+    ):
         assert key in d
     assert set(d["cells"]) == {"0.1", "0.2"}
     assert set(d["bounds"]) == {"x0", "x1", "z0", "z1"}

@@ -6,6 +6,7 @@ import copy
 from typing import Any
 
 import pytest
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -105,6 +106,45 @@ async def test_save_plan_renames_entities(
     assert hass.states.get(entity_id).name == "Demo flat Lounge occupancy"
 
 
+async def test_save_plan_answers_after_the_reload(
+    hass: HomeAssistant, hass_ws_client, config_entry: MockConfigEntry, stored_demo, demo_plan
+) -> None:
+    """A room change reloads the entry; save_plan answers only after it, so the next get works right away."""
+    await _setup(hass, config_entry)
+    client = await hass_ws_client(hass)
+    plan = copy.deepcopy(demo_plan)
+    plan["floors"][0]["rooms"][0]["name"] = "Lounge"
+    msg = await _call(client, type="presence_planner/save_plan", plan=plan)
+    assert msg["success"], msg
+    # no async_block_till_done here: the panel loads immediately after the answer
+    msg = await _call(client, type="presence_planner/get")
+    assert msg["success"], msg
+    assert msg["result"]["plan"]["floors"][0]["rooms"][0]["name"] == "Lounge"
+    assert config_entry.state is ConfigEntryState.LOADED
+
+
+async def test_deleted_room_loses_its_entities(
+    hass: HomeAssistant, hass_ws_client, config_entry: MockConfigEntry, stored_demo, demo_plan
+) -> None:
+    """A room removed from the plan takes its three entities out of the registry (no unavailable leftovers)."""
+    await _setup(hass, config_entry)
+    registry = er.async_get(hass)
+    before = {e.unique_id for e in er.async_entries_for_config_entry(registry, config_entry.entry_id)}
+    plan = copy.deepcopy(demo_plan)
+    removed = plan["floors"][0]["rooms"].pop()
+    client = await hass_ws_client(hass)
+    msg = await _call(client, type="presence_planner/save_plan", plan=plan)
+    assert msg["success"], msg
+    await hass.async_block_till_done()
+    after = {e.unique_id for e in er.async_entries_for_config_entry(registry, config_entry.entry_id)}
+    gone = before - after
+    floor_id = demo_plan["floors"][0]["id"]
+    assert gone == {
+        f"{config_entry.entry_id}_{floor_id}_{removed['id']}_{k}" for k in ("coverage", "misfire_risk", "occupancy")
+    }
+    assert len(after) == len(before) - 3
+
+
 async def test_export_and_import_roundtrip(
     hass: HomeAssistant, hass_ws_client, config_entry: MockConfigEntry, stored_demo, demo_plan
 ) -> None:
@@ -126,11 +166,19 @@ async def test_export_and_import_roundtrip(
     assert sofa == {"type": "sofa_l", "at": [1.4, 2.9], "width": 2.4, "depth": 1.6, "height": 0.85, "rotation": 180}
     assert floor["walls"][0]["from"] == [0.15, 6.55]
 
+    # the sensors travel in an extra key, by floor index (the import format has no floor ids)
+    exported = data["presence_planner"]["sensors"]
+    assert exported and all(s["floor_index"] == 0 for s in exported)
+
     msg = await _call(client, type="presence_planner/import", data=data)
     assert msg["success"], msg
     plan = msg["result"]["plan"]
     imported = plan["floors"][0]
     assert len(imported["rooms"]) == 5
+    sensors = msg["result"]["sensors"]
+    assert [s["entity_id"] for s in sensors] == [s["entity_id"] for s in exported]
+    assert all(s["floor_id"] == imported["id"] for s in sensors)
+    assert [(s["x"], s["z"], s["phi"]) for s in sensors] == [(s["x"], s["z"], s["phi"]) for s in exported]
     assert len([o for o in imported["openings"] if o["type"] == "door"]) == 5
     assert len([o for o in imported["openings"] if o["type"] == "window"]) == 4
     living = next(r for r in imported["rooms"] if r["name"] == "Living room")

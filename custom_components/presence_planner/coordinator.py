@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import logging
 from collections.abc import Callable
@@ -22,6 +23,7 @@ from .const import (
     CONF_THIN_DB,
     DEBOUNCE_SECONDS,
     DEFAULT_OPTIONS,
+    DOMAIN,
     HEIGHTS,
     SIGNAL_UPDATED,
     SOURCE_AUTO,
@@ -78,6 +80,7 @@ class PresencePlannerCoordinator:
         self.results: dict[str, Any] = {}
         self.revision = 0
         self.room_keys: tuple = ()
+        self.reload_task: asyncio.Task | None = None
         self._listeners: list[Callable[[], None]] = []
         self._unsubs: list[Callable[[], None]] = []
         self._debouncer = Debouncer(
@@ -211,8 +214,14 @@ class PresencePlannerCoordinator:
         self.revision += 1
         async_dispatcher_send(self.hass, SIGNAL_UPDATED, self.revision)
         if self._room_keys() != self.room_keys:
-            # rooms were added, removed or renamed: the entities are rebuilt
-            self.hass.config_entries.async_schedule_reload(self.entry.entry_id)
+            # Rooms were added, removed or renamed: the entities are rebuilt. The WebSocket write commands
+            # await this task before they answer, so the panel's next `get` reaches the reloaded entry.
+            if self.reload_task is None or self.reload_task.done():
+                self.reload_task = self.hass.async_create_task(
+                    self.hass.config_entries.async_reload(self.entry.entry_id),
+                    f"{DOMAIN} reload after room change",
+                    eager_start=False,
+                )
             return
         self._debouncer.async_schedule_call()
 
@@ -257,9 +266,14 @@ class PresencePlannerCoordinator:
         if self.source == SOURCE_OWN:
             self.async_changed()
 
-    async def async_import(self, plan: dict[str, Any], building: dict[str, Any] | None) -> list[dict[str, Any]]:
-        """Store an imported plan as own plan; sensors from a NeonPlan building's placements become own sensors."""
-        sensors: list[dict[str, Any]] = []
+    async def async_import(
+        self, plan: dict[str, Any], building: dict[str, Any] | None, sensors: list[dict[str, Any]] | None = None
+    ) -> list[dict[str, Any]]:
+        """Store an imported plan as own plan; sensors from a NeonPlan building's placements become own sensors.
+
+        `sensors` are the sensors of an own export (already validated, floor ids of `plan`).
+        """
+        sensors = list(sensors or [])
         if building is not None:
             heights = {f["id"]: float(f.get("height") or 2.5) for f in plan.get("floors") or []}
             for floor in building.get("floors") or []:

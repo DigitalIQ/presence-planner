@@ -253,7 +253,11 @@ def build_model(plan: dict, floor_id: str) -> Model:
         p0 = [a[0] + u[0] * (offset - width / 2), a[1] + u[1] * (offset - width / 2)]
         p1 = [a[0] + u[0] * (offset + width / 2), a[1] + u[1] * (offset + width / 2)]
         sub = next(
-            (s for s in subs if s["room"] == r["id"] and s["edge"] == ei and s["t0"] - 1e-6 <= offset <= s["t1"] + 1e-6),
+            (
+                s
+                for s in subs
+                if s["room"] == r["id"] and s["edge"] == ei and s["t0"] - 1e-6 <= offset <= s["t1"] + 1e-6
+            ),
             None,
         )
         n = sub["n"] if sub else list(_inward_normal(pts, a, u, length / 2))
@@ -410,7 +414,13 @@ def _cut_door(segments: list, p0, p1, u, width: float) -> None:
         if lo < -EPS:
             segments.append({"a": [p0[0] + u[0] * lo, p0[1] + u[1] * lo], "b": list(p0), "k": m["k"]})
         if hi > width + EPS:
-            segments.append({"a": [p0[0] + u[0] * width, p0[1] + u[1] * width], "b": [p0[0] + u[0] * hi, p0[1] + u[1] * hi], "k": m["k"]})
+            segments.append(
+                {
+                    "a": [p0[0] + u[0] * width, p0[1] + u[1] * width],
+                    "b": [p0[0] + u[0] * hi, p0[1] + u[1] * hi],
+                    "k": m["k"],
+                }
+            )
 
 
 def _build_fast(model: Model) -> None:
@@ -419,12 +429,35 @@ def _build_fast(model: Model) -> None:
     for s in model.segments:
         a, b = s["a"], s["b"]
         walls.append(
-            (a[0], a[1], b[0], b[1], KIND_NAMES.index(s["k"]), min(a[0], b[0]), max(a[0], b[0]), min(a[1], b[1]), max(a[1], b[1]))
+            (
+                a[0],
+                a[1],
+                b[0],
+                b[1],
+                KIND_NAMES.index(s["k"]),
+                min(a[0], b[0]),
+                max(a[0], b[0]),
+                min(a[1], b[1]),
+                max(a[1], b[1]),
+            )
         )
     door_segs = []
     for d in model.doors:
         a, b = d["a"], d["b"]
-        door_segs.append((d["id"], a[0], a[1], b[0], b[1], min(a[0], b[0]), max(a[0], b[0]), min(a[1], b[1]), max(a[1], b[1]), d["outside"]))
+        door_segs.append(
+            (
+                d["id"],
+                a[0],
+                a[1],
+                b[0],
+                b[1],
+                min(a[0], b[0]),
+                max(a[0], b[0]),
+                min(a[1], b[1]),
+                max(a[1], b[1]),
+                d["outside"],
+            )
+        )
     blockers = [(halfplanes(w["poly"]), bbox(w["poly"])) for w in model.free_walls if w["block"]]
     obstacles = [(halfplanes(f["poly"]), bbox(f["poly"]), f["h"]) for f in model.furniture if f["obstacle"]]
     model.fast = {"walls": walls, "doors": door_segs, "blockers": blockers, "obstacles": obstacles}
@@ -501,7 +534,9 @@ def zone_cell_ids(model: Model, group: dict, cell: float) -> list:
                 c = part["center"]
                 hit = math.hypot(x - c[0], z - c[1]) < part["radius"]
             else:
-                hit = point_in_polygon(x, z, part["outer"]) and not (part["inner"] and point_in_polygon(x, z, part["inner"]))
+                hit = point_in_polygon(x, z, part["outer"]) and not (
+                    part["inner"] and point_in_polygon(x, z, part["inner"])
+                )
             if hit:
                 ids.append(i)
                 break
@@ -522,11 +557,20 @@ def model_to_dict(model: Model) -> dict:
         "floor": dict(model.floor),
         "settings": dict(model.settings),
         "rooms": [
-            {"id": r["id"], "name": r["name"], "area_id": r["area_id"], "points": _round_poly(r["points"]), "height": r["height"]}
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "area_id": r["area_id"],
+                "points": _round_poly(r["points"]),
+                "height": r["height"],
+            }
             for r in model.rooms
         ],
         "bands": [_round_poly(b) for b in model.bands],
-        "faces": [{"a": _round_pt(f["a"]), "b": _round_pt(f["b"]), "n": _round_pt(f["n"]), "room": f["room"]} for f in model.faces],
+        "faces": [
+            {"a": _round_pt(f["a"]), "b": _round_pt(f["b"]), "n": _round_pt(f["n"]), "room": f["room"]}
+            for f in model.faces
+        ],
         "segments": [{"a": _round_pt(s["a"]), "b": _round_pt(s["b"]), "k": s["k"]} for s in model.segments],
         "doors": [
             {
@@ -544,11 +588,20 @@ def model_to_dict(model: Model) -> dict:
             for d in model.doors
         ],
         "windows": [
-            {"id": w["id"], "a": _round_pt(w["a"]), "b": _round_pt(w["b"]), "n": _round_pt(w["n"]), "exterior": w["exterior"]}
+            {
+                "id": w["id"],
+                "a": _round_pt(w["a"]),
+                "b": _round_pt(w["b"]),
+                "n": _round_pt(w["n"]),
+                "exterior": w["exterior"],
+            }
             for w in model.windows
         ],
         "glass": [{"a": _round_pt(g["a"]), "b": _round_pt(g["b"]), "n": _round_pt(g["n"])} for g in model.glass],
-        "freeWalls": [{"id": w["id"], "poly": _round_poly(w["poly"]), "height": w["height"], "block": w["block"]} for w in model.free_walls],
+        "freeWalls": [
+            {"id": w["id"], "poly": _round_poly(w["poly"]), "height": w["height"], "block": w["block"]}
+            for w in model.free_walls
+        ],
         "furniture": [
             {"id": f["id"], "type": f["type"], "poly": _round_poly(f["poly"]), "h": f["h"], "obstacle": f["obstacle"]}
             for f in model.furniture
@@ -562,7 +615,15 @@ def model_to_dict(model: Model) -> dict:
 def _zone_dict(z: dict) -> dict:
     out = {"name": z["name"], "room": z["room"], "height": z["height"]}
     if z.get("outer") is None:
-        out.update({"outer": None, "inner": None, "center": _round_pt(z["center"]), "radius": z["radius"], "door": z.get("door")})
+        out.update(
+            {
+                "outer": None,
+                "inner": None,
+                "center": _round_pt(z["center"]),
+                "radius": z["radius"],
+                "door": z.get("door"),
+            }
+        )
     else:
         out.update({"outer": _round_poly(z["outer"]), "inner": _round_poly(z["inner"]) if z["inner"] else None})
     return out

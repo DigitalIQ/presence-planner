@@ -6,6 +6,7 @@ from datetime import timedelta
 
 import pytest
 from freezegun.api import FrozenDateTimeFactory
+from homeassistant import config_entries
 from homeassistant.components import frontend
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -20,7 +21,7 @@ ROOMS = ["living", "bedroom", "kitchen", "hall", "bath"]
 
 
 async def test_setup_and_unload(hass: HomeAssistant, config_entry: MockConfigEntry, stored_demo: dict) -> None:
-    """Setup registers the panel and the entities; unload removes the panel."""
+    """Setup registers the panel and the entities; reload keeps the panel, disabling and removing drop it."""
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
     assert config_entry.state is ConfigEntryState.LOADED
@@ -35,9 +36,24 @@ async def test_setup_and_unload(hass: HomeAssistant, config_entry: MockConfigEnt
     assert custom["embed_iframe"] is False
     assert custom["module_url"].startswith("/presence_planner/frontend/presence-planner-panel.js?v=")
 
-    assert await hass.config_entries.async_unload(config_entry.entry_id)
+    # a reload (rooms added or renamed) must not throw the user out of the open panel
+    assert await hass.config_entries.async_reload(config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert config_entry.state is ConfigEntryState.LOADED
+    assert "presence-planner" in hass.data[frontend.DATA_PANELS]
+
+    assert await hass.config_entries.async_set_disabled_by(
+        config_entry.entry_id, config_entries.ConfigEntryDisabler.USER
+    )
     await hass.async_block_till_done()
     assert config_entry.state is ConfigEntryState.NOT_LOADED
+    assert "presence-planner" not in hass.data[frontend.DATA_PANELS]
+
+    assert await hass.config_entries.async_set_disabled_by(config_entry.entry_id, None)
+    await hass.async_block_till_done()
+    assert "presence-planner" in hass.data[frontend.DATA_PANELS]
+    await hass.config_entries.async_remove(config_entry.entry_id)
+    await hass.async_block_till_done()
     assert "presence-planner" not in hass.data[frontend.DATA_PANELS]
 
 

@@ -38,6 +38,9 @@ DEFAULT_CEILING_TILT: Final = 90.0
 # binary sensors that count as presence or motion sensors
 SENSOR_DEVICE_CLASSES: Final = frozenset({"occupancy", "presence", "motion"})
 
+# entities per room (unique id: <entry>_<floor>_<room>_<key>)
+ENTITY_KEYS: Final = ("coverage", "misfire_risk", "occupancy")
+
 # storage
 STORAGE_KEY: Final = DOMAIN
 STORAGE_VERSION: Final = 1

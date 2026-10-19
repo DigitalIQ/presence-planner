@@ -70,21 +70,38 @@ def test_best_candidate_agrees_with_evaluate(model, results):
     for rid, res in results.items():
         c = res[0]
         s = resolve_sensor(
-            {"entity_id": "binary_sensor.cand", "floor_id": "demo", "profile": WALL_PROFILE, "mount": c["mount"], "x": c["x"], "z": c["z"], "height": c["height"], "phi": c["phi"], "tilt": c["tilt"]},
+            {
+                "entity_id": "binary_sensor.cand",
+                "floor_id": "demo",
+                "profile": WALL_PROFILE,
+                "mount": c["mount"],
+                "x": c["x"],
+                "z": c["z"],
+                "height": c["height"],
+                "phi": c["phi"],
+                "tilt": c["tilt"],
+            },
             profiles,
         )
         ev = evaluate(model, [s], {"cell": 0.2})
         assert ev["rooms"][rid]["coverage_mean"] == pytest.approx(c["coverage"], abs=0.01)
         for other, share in c["spill"].items():
             assert ev["sensors"]["binary_sensor.cand"]["spill"][other] == pytest.approx(share, abs=0.01)
-        assert all(v == pytest.approx(0, abs=0.01) for k, v in ev["sensors"]["binary_sensor.cand"]["spill"].items() if k not in c["spill"])
+        assert all(
+            v == pytest.approx(0, abs=0.01)
+            for k, v in ev["sensors"]["binary_sensor.cand"]["spill"].items()
+            if k not in c["spill"]
+        )
 
 
 def test_wall_mounted_best_points_face_into_the_room(model, results):
     # the viewing direction has a positive component along the inward normal of the nearest face
     for rid, res in results.items():
         c = res[0]
-        face = min((f for f in model.faces if f["room"] == rid), key=lambda f: dist_point_segment(c["x"], c["z"], f["a"], f["b"]))
+        face = min(
+            (f for f in model.faces if f["room"] == rid),
+            key=lambda f: dist_point_segment(c["x"], c["z"], f["a"], f["b"]),
+        )
         fx, fz = math.cos(math.radians(c["phi"])), math.sin(math.radians(c["phi"]))
         assert fx * face["n"][0] + fz * face["n"][1] > 0
 
@@ -106,7 +123,9 @@ def test_weight_trades_coverage_for_less_spill(model):
     low = optimize(model, "hall", WALL_PROFILE, {"cell": 0.2}, 0.0)[0]
     high = optimize(model, "hall", WALL_PROFILE, {"cell": 0.2}, 2.0)[0]
     assert hall_weighted_spill(model, high) <= hall_weighted_spill(model, low) + 0.02
-    assert high["coverage"] <= low["coverage"] + 0.05 or hall_weighted_spill(model, high) < hall_weighted_spill(model, low)
+    assert high["coverage"] <= low["coverage"] + 0.05 or hall_weighted_spill(model, high) < hall_weighted_spill(
+        model, low
+    )
 
 
 def test_hall_rooms_are_recognised():

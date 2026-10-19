@@ -108,21 +108,33 @@ export class PresencePlannerPanel extends LitElement {
 
   /* ---------- data loading ---------- */
 
+  /** Loads plan and sensors; true on success. Retries while the integration reloads (`not_loaded`). */
   async _load() {
-    if (!this._client) return;
+    if (!this._client) return false;
     this._busy = true;
     this._status = { key: "status.loading" };
     try {
-      const res = await this._client.get();
+      let res;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          res = await this._client.get();
+          break;
+        } catch (e) {
+          if (mapError(e).code !== "not_loaded" || attempt >= 3) throw e;
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
       this._setState(S.applyLoad(this._s, res));
       this._status = null;
       // The backend reports NeonPlan problems in `neonplan.error` and falls back to the own plan.
       const npErr = res.neonplan && (res.neonplan.error || (res.neonplan.incompatible && "neonplan_incompatible"));
       if (npErr) this._status = { key: mapError({ code: npErr, message: npErr }).i18nKey, error: true, detail: npErr };
+      return true;
     } catch (e) {
       const err = mapError(e);
       this._s = { ...this._s, loading: false, error: err };
       this._status = { key: err.i18nKey, error: true, detail: err.message };
+      return false;
     } finally {
       this._busy = false;
     }
@@ -141,6 +153,8 @@ export class PresencePlannerPanel extends LitElement {
     if (!this._client || this._unsub) return;
     try {
       this._unsub = await this._client.subscribe((ev) => {
+        // our own save triggers these events too; save() loads the result itself afterwards
+        if (this._saving) return;
         const { state, reload } = S.onRemoteRevision(this._s, ev.revision);
         this._s = state;
         if (reload) this._load();
@@ -329,6 +343,7 @@ export class PresencePlannerPanel extends LitElement {
   async save() {
     if (!this._client) return;
     this._busy = true;
+    this._saving = true;
     this._status = { key: "status.saving" };
     try {
       if (this._s.planDirty && S.editorAvailable(this._s)) await this._client.savePlan(this._s.editPlan);
@@ -338,13 +353,14 @@ export class PresencePlannerPanel extends LitElement {
         revision = res && res.revision;
         this._s = S.markSaved(this._s, revision);
       }
-      await this._load();
-      this._status = { key: "status.saved" };
+      // _load sets its own error status when it fails; only a successful load confirms the save
+      if (await this._load()) this._status = { key: "status.saved" };
     } catch (e) {
       const err = mapError(e);
       this._status = { key: err.i18nKey, error: true, detail: err.message };
     } finally {
       this._busy = false;
+      this._saving = false;
     }
   }
 
@@ -566,9 +582,26 @@ export class PresencePlannerPanel extends LitElement {
     });
   }
 
+  /** HA areas and floors as sorted lists for the editor; recomputed only when HA sends new registries. */
+  _haRegistries() {
+    const areas = this.hass?.areas;
+    const floors = this.hass?.floors;
+    if (this._regCache && this._regCache.areas === areas && this._regCache.floors === floors) return this._regCache;
+    const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""));
+    this._regCache = {
+      areas,
+      floors,
+      areaList: Object.values(areas || {}).sort(byName),
+      floorList: Object.values(floors || {}).sort((a, b) => (a.level ?? 0) - (b.level ?? 0) || byName(a, b)),
+    };
+    return this._regCache;
+  }
+
   _renderEditor() {
+    const reg = this._haRegistries();
     return html`<section id="tp-editor" role="tabpanel" aria-labelledby="tab-editor" class="editor">
       <pp-editor .plan=${this._s.editPlan} .floorId=${this._s.floorId} .hass=${this.hass} .dark=${!!this._dark}
+        .lang=${this.hass?.language || "en"} .areas=${reg.areaList} .floors=${reg.floorList}
         @plan-changed=${(e) => this._onPlanChanged(e)}></pp-editor>
     </section>`;
   }

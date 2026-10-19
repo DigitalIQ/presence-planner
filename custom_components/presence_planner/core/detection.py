@@ -159,7 +159,9 @@ class RayCaster:
 
     __slots__ = ("all_doors", "blockers", "closed", "obstacles", "sx", "sy", "sz", "walls")
 
-    def __init__(self, model: Model, sx: float, sz: float, sy: float, reach: float, closed_ids=frozenset(), thin_db: float = 10.0):
+    def __init__(
+        self, model: Model, sx: float, sz: float, sy: float, reach: float, closed_ids=frozenset(), thin_db: float = 10.0
+    ):
         self.sx, self.sz, self.sy = sx, sz, sy
         fast = model.fast
         lx, hx, lz, hz = sx - reach, sx + reach, sz - reach, sz + reach
@@ -271,7 +273,15 @@ def _contains(hp, px: float, pz: float) -> bool:
 
 
 def make_caster(model: Model, s: dict, doors="open", thin_db: float = 10.0) -> RayCaster:
-    return RayCaster(model, float(s["x"]), float(s["z"]), float(s.get("height", 1.9)), float(s["reach"]), closed_door_ids(model, doors), thin_db)
+    return RayCaster(
+        model,
+        float(s["x"]),
+        float(s["z"]),
+        float(s.get("height", 1.9)),
+        float(s["reach"]),
+        closed_door_ids(model, doors),
+        thin_db,
+    )
 
 
 def detect(model: Model, sensor: dict, point, opts: dict | None = None) -> float:

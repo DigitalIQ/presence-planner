@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
 
@@ -29,12 +30,21 @@ async def async_register_static(hass: HomeAssistant) -> None:
     hass.data[_STATIC_REGISTERED] = True
 
 
+def _bundle_hash() -> str:
+    """Short content hash of the bundle, so browsers fetch a new build even with the same version."""
+    try:
+        return hashlib.sha256((FRONTEND_DIR / PANEL_BUNDLE).read_bytes()).hexdigest()[:10]
+    except OSError:
+        return "missing"
+
+
 async def async_register_panel(hass: HomeAssistant) -> None:
     """Add the sidebar entry; works without a built bundle (the panel then just does not load)."""
     await async_register_static(hass)
     if not await hass.async_add_executor_job((FRONTEND_DIR / PANEL_BUNDLE).is_file):
         _LOGGER.debug("Panel bundle %s not built yet", PANEL_BUNDLE)
     integration = await async_get_integration(hass, DOMAIN)
+    bundle_hash = await hass.async_add_executor_job(_bundle_hash)
     if frontend.async_panel_exists(hass, PANEL_URL_PATH):
         return
     await panel_custom.async_register_panel(
@@ -43,7 +53,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         webcomponent_name=PANEL_COMPONENT,
         sidebar_title=PANEL_TITLE,
         sidebar_icon=PANEL_ICON,
-        module_url=f"{STATIC_URL}/{PANEL_BUNDLE}?v={integration.version}",
+        module_url=f"{STATIC_URL}/{PANEL_BUNDLE}?v={integration.version}-{bundle_hash}",
         embed_iframe=False,
         require_admin=False,
         config={},
