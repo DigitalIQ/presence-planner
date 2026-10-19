@@ -2,7 +2,7 @@
 # Start: docker compose -f dev/docker-compose.yaml up -d   → http://localhost:8124
 services:
   homeassistant:
-    image: ghcr.io/home-assistant/home-assistant:2026.10
+    image: homeassistant/home-assistant:2026.10.2
     container_name: pp-dev-ha
     ports:
       - "127.0.0.1:8124:8123"

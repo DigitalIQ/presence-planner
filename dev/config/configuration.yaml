@@ -5,3 +5,23 @@ logger:
   default: info
   logs:
     custom_components.presence_planner: debug
+
+# Switches to simulate the demo sensors and door contacts from shared/demo-plan.json
+input_boolean:
+  demo_living: { name: Demo living presence }
+  demo_bedroom: { name: Demo bedroom presence }
+  demo_kitchen: { name: Demo kitchen presence }
+  demo_bath: { name: Demo bath presence }
+  demo_hall: { name: Demo hall motion }
+  demo_living_door: { name: Demo living door open }
+  demo_bath_door: { name: Demo bath door open }
+
+template:
+  - binary_sensor:
+      - { name: Demo living presence, unique_id: demo_living_presence, device_class: occupancy, state: "{{ is_state('input_boolean.demo_living', 'on') }}" }
+      - { name: Demo bedroom presence, unique_id: demo_bedroom_presence, device_class: occupancy, state: "{{ is_state('input_boolean.demo_bedroom', 'on') }}" }
+      - { name: Demo kitchen presence, unique_id: demo_kitchen_presence, device_class: occupancy, state: "{{ is_state('input_boolean.demo_kitchen', 'on') }}" }
+      - { name: Demo bath presence, unique_id: demo_bath_presence, device_class: occupancy, state: "{{ is_state('input_boolean.demo_bath', 'on') }}" }
+      - { name: Demo hall motion, unique_id: demo_hall_motion, device_class: motion, state: "{{ is_state('input_boolean.demo_hall', 'on') }}" }
+      - { name: Demo living door, unique_id: demo_living_door, device_class: door, state: "{{ is_state('input_boolean.demo_living_door', 'on') }}" }
+      - { name: Demo bath door, unique_id: demo_bath_door, device_class: door, state: "{{ is_state('input_boolean.demo_bath_door', 'on') }}" }
