@@ -121,6 +121,8 @@ export const panelStyles = css`
   .bar { height: 4px; background: var(--pp-line); border-radius: 2px; overflow: hidden; margin-top: 3px; }
   .bar i { display: block; height: 100%; background: var(--pp-accent); }
   .table-wrap { overflow-x: auto; }
+  tr.has-from > th, tr.has-from > td { border-bottom: none; padding-bottom: 0; }
+  tr.from > td { font-size: 12px; padding-top: 2px; }
   ul { margin: 0; padding-left: 18px; font-size: 13px; }
   .kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; font-size: 13px; }
   .kv .v { text-align: right; font-variant-numeric: tabular-nums; }

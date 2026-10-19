@@ -128,6 +128,11 @@ export class SceneController {
     this.controls.screenSpacePanning = true;
     this.controls.maxPolarAngle = Math.PI / 2 - 0.02;
     this.controls.addEventListener('change', () => this._request());
+    // Until the user moves the camera, every resize frames the model again (the split
+    // layout settles after the first frame, which would otherwise leave it zoomed out).
+    this._userMoved = false;
+    this._lastView = 'iso';
+    this.controls.addEventListener('start', () => { this._userMoved = true; });
 
     this.raycaster = new Raycaster();
     this._onPointerDown = (e) => this._pointerDown(e);
@@ -192,10 +197,10 @@ export class SceneController {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    if (!this._sized) {
+    if (this.state.model && (!this._sized || !this._userMoved)) {
       // The first real size arrives after the model: frame again with the right aspect.
       this._sized = true;
-      if (this.state.model) this._frame('iso');
+      this._frame(this._lastView);
     }
     this._request();
   }
@@ -236,11 +241,15 @@ export class SceneController {
   }
 
   _frame(view) {
+    this._lastView = view;
+    this._userMoved = false;
     const b = this.state.model?.bounds;
     const f = frameBounds(b, {
       fov: FOV,
       aspect: this.camera.aspect,
       height: this.state.model?.floor?.height,
+      // model.bounds carries a 0.4 m drawing margin; the 3D view frames the walls themselves
+      inset: 0.35,
       view,
     });
     this.camera.near = f.near;

@@ -196,11 +196,11 @@ test('buildStaticData tolerates an empty model', () => {
   assert.equal(d.walls.indices.length, 0);
 });
 
-test('frameBounds iso: target is the bounds centre, whole box inside the view', () => {
+test('frameBounds iso: target near the bounds centre, whole box inside the view', () => {
   const b = { x0: 0, x1: 10, z0: 0, z1: 6 };
   const f = frameBounds(b, { fov: 40, aspect: 1.5, height: 2.6 });
-  near(f.target[0], 5);
-  near(f.target[2], 3);
+  // the target is shifted a little so that the projected box is centred in the image
+  assert.ok(Math.hypot(f.target[0] - 5, f.target[2] - 3) < 1.5, `target ${f.target}`);
   assert.ok(f.position[2] > f.target[2], 'camera on the +z (south) side');
   assert.ok(f.position[1] > f.target[1], 'camera above');
   const radius = 0.5 * Math.hypot(10, 6, 2.6);
@@ -209,6 +209,32 @@ test('frameBounds iso: target is the bounds centre, whole box inside the view', 
   assert.ok(f.maxDistance > f.distance);
   const dist = Math.hypot(...f.position.map((v, i) => v - f.target[i]));
   near(dist, f.distance, 1e-6);
+});
+
+test('frameBounds iso: tight fit on a narrow canvas, all corners inside', () => {
+  const b = { x0: -0.7, x1: 9.3, z0: -0.7, z1: 7.7 };
+  for (const aspect of [0.56, 1.0, 1.8]) {
+    const f = frameBounds(b, { fov: 40, aspect, height: 2.6 });
+    const fwd = f.target.map((v, i) => v - f.position[i]);
+    const fl = Math.hypot(...fwd);
+    const F = fwd.map((v) => v / fl);
+    const R = [F[1] * 0 - F[2] * 1, F[2] * 0 - F[0] * 0, F[0] * 1 - F[1] * 0];
+    const rl = Math.hypot(...R);
+    const Rn = R.map((v) => v / rl);
+    const U = [Rn[1] * F[2] - Rn[2] * F[1], Rn[2] * F[0] - Rn[0] * F[2], Rn[0] * F[1] - Rn[1] * F[0]];
+    const tanV = Math.tan((20 * Math.PI) / 180);
+    const tanH = tanV * aspect;
+    let worst = 0;
+    for (const x of [b.x0, b.x1]) for (const z of [b.z0, b.z1]) for (const y of [0, 2.6]) {
+      const v = [x - f.position[0], y - f.position[1], z - f.position[2]];
+      const d = v[0] * F[0] + v[1] * F[1] + v[2] * F[2];
+      const sx = Math.abs(v[0] * Rn[0] + v[1] * Rn[1] + v[2] * Rn[2]) / d / tanH;
+      const sy = Math.abs(v[0] * U[0] + v[1] * U[1] + v[2] * U[2]) / d / tanV;
+      worst = Math.max(worst, sx, sy);
+    }
+    assert.ok(worst <= 1, `corner outside the view at aspect ${aspect}: ${worst}`);
+    assert.ok(worst > 0.9, `fit too loose at aspect ${aspect}: ${worst}`);
+  }
 });
 
 test('frameBounds top: straight above the centre, wide plans fit the width', () => {

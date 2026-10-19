@@ -120,7 +120,6 @@ export function renderResults(h) {
           <th scope="col">${t("results.room")}</th>
           ${S.HEIGHTS.map((x) => html`<th scope="col" class="num" title=${t(`height.h${String(x).replace(".", "")}`)}>${f.num(x, 1)} m</th>`)}
           <th scope="col" class="num" title=${t("results.misfire_hint")}>${t("results.misfire")}</th>
-          <th scope="col">${t("results.seen_from")}</th>
         </tr></thead>
         <tbody>
           ${rooms.map((r) => {
@@ -128,15 +127,17 @@ export function renderResults(h) {
             if (!v) return nothing;
             const own = (v.own_sensors || []).length > 0;
             const from = Object.entries(v.from || {}).filter(([, x]) => x >= 0.01).sort((a, b) => b[1] - a[1]);
-            return html`<tr>
+            return html`<tr class=${from.length ? "has-from" : ""}>
               <th scope="row" style="font-weight:500;color:inherit">${r.name || r.id}
                 <div class="bar" aria-hidden="true"><i style="width:${Math.round((own ? v.coverage_mean : 0) * 100)}%"></i></div></th>
               ${own
                 ? S.HEIGHTS.map((x) => html`<td class="num">${f.pct(v.coverage[String(x)])}</td>`)
                 : html`<td class="num muted" colspan="3">${t("results.no_sensor")}</td>`}
               <td class="num ${v.misfire_risk >= 0.05 ? "spill" : ""}">${f.pct(v.misfire_risk)}</td>
-              <td class=${from.length ? "spill" : ""}>${from.length ? from.map(([eid, x]) => html`<div>${h.name(eid)} <span style="white-space:nowrap">${f.pct(x)}</span></div>`) : "–"}</td>
-            </tr>`;
+            </tr>
+            ${from.length
+              ? html`<tr class="from"><td colspan="5" class="spill">${t("results.seen_from")}: ${from.map(([eid, x], i) => html`${i ? ", " : ""}${h.name(eid)} <span style="white-space:nowrap">${f.pct(x)}</span>`)}</td></tr>`
+              : nothing}`;
           })}
         </tbody>
       </table>

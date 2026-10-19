@@ -56,7 +56,7 @@
         }
       },
       "misfire_risk": {
-        "name": "{room} Fehlauslöserisiko",
+        "name": "{room} Fehlschalt-Risiko",
         "state_attributes": {
           "from": { "name": "Von Meldern" },
           "height": { "name": "Höhe" }

@@ -475,9 +475,40 @@ export function frameBounds(bounds, opts = {}) {
     const el = 50 * DEG;
     const az = 20 * DEG;
     direction = [Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)];
-    const radius = 0.5 * Math.hypot(spanX, spanZ, H);
-    const halfMin = Math.atan(Math.min(tanV, tanH));
-    distance = (radius / Math.sin(halfMin)) * 1.05;
+    // Exact fit: the nearest distance at which all 8 box corners stay inside the frustum,
+    // with the projected box centred (near corners look larger, so the box centre is not
+    // the image centre). A bounding sphere is too loose for narrow canvases (split view).
+    const dn0 = norm(direction);
+    const right = norm(cross(mul(dn0, -1), [0, 1, 0]));
+    const up = cross(right, mul(dn0, -1));
+    const inset = Math.max(0, Math.min(opts.inset ?? 0, (spanX - 1) / 2, (spanZ - 1) / 2));
+    const corners = [];
+    for (const x of [b.x0 + inset, b.x1 - inset]) {
+      for (const z of [b.z0 + inset, b.z1 - inset]) {
+        for (const y of [0, H]) corners.push([x, y, z]);
+      }
+    }
+    for (let iter = 0; iter < 6; iter++) {
+      distance = 0;
+      for (const c of corners) {
+        const v = sub(c, target);
+        const depth = dot(v, dn0);
+        distance = Math.max(distance, depth + Math.abs(dot(v, right)) / tanH, depth + Math.abs(dot(v, up)) / tanV);
+      }
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const c of corners) {
+        const v = sub(c, target);
+        const ahead = distance - dot(v, dn0);
+        const sx = dot(v, right) / ahead / tanH;
+        const sy = dot(v, up) / ahead / tanV;
+        x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+      }
+      const ox = ((x0 + x1) / 2) * tanH * distance;
+      const oy = ((y0 + y1) / 2) * tanV * distance;
+      if (Math.abs(ox) < 1e-4 && Math.abs(oy) < 1e-4) break;
+      target = add(target, add(mul(right, ox), mul(up, oy)));
+    }
+    distance *= 1.04;
   }
   const dn = norm(direction);
   const position = add(target, mul(dn, distance));
