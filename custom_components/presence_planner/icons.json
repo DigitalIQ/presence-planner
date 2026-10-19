@@ -1,0 +1,8 @@
+{
+  "entity": {
+    "sensor": {
+      "coverage": { "default": "mdi:radar" },
+      "misfire_risk": { "default": "mdi:home-alert-outline" }
+    }
+  }
+}

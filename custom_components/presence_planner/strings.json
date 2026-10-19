@@ -1,0 +1,78 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Presence Planner",
+        "description": "Plan presence and motion sensors on your floor plan. The panel appears in the sidebar after setup."
+      }
+    },
+    "abort": {
+      "already_configured": "Presence Planner is already set up.",
+      "single_instance_allowed": "Presence Planner is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Presence Planner options",
+        "data": {
+          "plan_source": "Floor plan source",
+          "thin_db": "Thin wall attenuation",
+          "hold_time": "Hold time",
+          "echo_window": "Echo window",
+          "spill_threshold": "Spill threshold"
+        },
+        "data_description": {
+          "plan_source": "Automatic uses NeonPlan 3D when it is loaded, otherwise the own floor plan.",
+          "thin_db": "Damping of walls thinner than 10 cm.",
+          "hold_time": "How long a room stays occupied after the last valid detection.",
+          "echo_window": "How soon after a neighbour sensor an echo can follow.",
+          "spill_threshold": "Least share of a neighbour room a sensor must see before its detections can be treated as echoes (0 to 1)."
+        }
+      }
+    }
+  },
+  "selector": {
+    "plan_source": {
+      "options": {
+        "auto": "Automatic",
+        "neonplan": "NeonPlan 3D",
+        "own": "Own floor plan"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "coverage": {
+        "name": "{room} coverage",
+        "state_attributes": {
+          "coverage_lying": { "name": "Coverage lying (0.5 m)" },
+          "coverage_sitting": { "name": "Coverage sitting (0.9 m)" },
+          "coverage_standing": { "name": "Coverage standing (1.3 m)" },
+          "seen_lying": { "name": "Seen lying (0.5 m)" },
+          "seen_sitting": { "name": "Seen sitting (0.9 m)" },
+          "seen_standing": { "name": "Seen standing (1.3 m)" },
+          "own_sensors": { "name": "Own sensors" }
+        }
+      },
+      "misfire_risk": {
+        "name": "{room} misfire risk",
+        "state_attributes": {
+          "from": { "name": "From sensors" },
+          "height": { "name": "Height" }
+        }
+      }
+    },
+    "binary_sensor": {
+      "occupancy": {
+        "name": "{room} occupancy",
+        "state_attributes": {
+          "sources": { "name": "Sources" },
+          "suppressed_echoes": { "name": "Suppressed echoes" },
+          "echo_of": { "name": "Echo of" },
+          "last_valid_sensor": { "name": "Last valid sensor" }
+        }
+      }
+    }
+  }
+}

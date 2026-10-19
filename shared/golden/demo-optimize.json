@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "floor_id": "demo",
+  "opts": {
+    "heights": [0.5, 0.9, 1.3],
+    "doors": "open",
+    "thin_db": 10,
+    "cell": 0.2
+  },
+  "weight": 1.0,
+  "note": "best candidate per room; candidates with equal score are ordered by smaller x, then smaller z; tied_with_best counts the returned candidates (max 5, distinct positions) whose score equals the best one",
+  "profile": "aqara_fp300",
+  "rooms": {
+    "living": {"best": {"x": 3.0, "z": 2.0, "height": 2.6, "phi": 0.0, "tilt": 90.0, "mount": "ceiling", "score": 0.8781, "coverage": 0.855, "spill": {}, "glass": 0.0}, "tied_with_best": 1},
+    "bedroom": {"best": {"x": 7.0, "z": 2.0, "height": 2.6, "phi": 0.0, "tilt": 90.0, "mount": "ceiling", "score": 0.9111, "coverage": 0.9083, "spill": {}, "glass": 0.0}, "tied_with_best": 1},
+    "kitchen": {"best": {"x": 0.5, "z": 5.5, "height": 2.6, "phi": 0.0, "tilt": 90.0, "mount": "ceiling", "score": 0.8772, "coverage": 0.8839, "spill": {}, "glass": 0.0}, "tied_with_best": 1},
+    "hall": {"best": {"x": 3.5, "z": 6.5, "height": 2.6, "phi": 0.0, "tilt": 90.0, "mount": "ceiling", "score": 0.8242, "coverage": 0.8881, "spill": {"kitchen": 0.0199, "bath": 0.0536}, "glass": 0.0}, "tied_with_best": 1},
+    "bath": {"best": {"x": 7.0, "z": 6.5, "height": 2.6, "phi": 0.0, "tilt": 90.0, "mount": "ceiling", "score": 0.9244, "coverage": 0.9623, "spill": {"hall": 0.0143}, "glass": 0.0}, "tied_with_best": 1}
+  },
+  "wall_corner": {
+    "profile": "everything_presence_lite",
+    "rooms": {"living": {"best": {"x": 0.03, "z": 0.07, "height": 1.9, "phi": 52.5, "tilt": 10.0, "mount": "wall", "score": 0.7719, "coverage": 0.8506, "spill": {"bedroom": 0.0026, "hall": 0.0286}, "glass": 0.0004}, "tied_with_best": 1}, "bedroom": {"best": {"x": 5.0875, "z": 0.03, "height": 1.9, "phi": 50.0, "tilt": 10.0, "mount": "corner", "score": 0.8909, "coverage": 0.8627, "spill": {}, "glass": 0.0232}, "tied_with_best": 1}, "kitchen": {"best": {"x": 2.07, "z": 6.97, "height": 1.9, "phi": 272.5, "tilt": 10.0, "mount": "wall", "score": 0.8449, "coverage": 0.7612, "spill": {"living": 0.0343}, "glass": 0.0}, "tied_with_best": 1}, "hall": {"best": {"x": 4.93, "z": 6.97, "height": 1.9, "phi": 207.5, "tilt": 10.0, "mount": "corner", "score": 0.6465, "coverage": 0.8333, "spill": {"living": 0.1543, "kitchen": 0.0448}, "glass": 0.1404}, "tied_with_best": 1}, "bath": {"best": {"x": 5.07, "z": 6.97, "height": 1.9, "phi": 330.0, "tilt": 10.0, "mount": "wall", "score": 0.8226, "coverage": 0.9184, "spill": {}, "glass": 0.4081}, "tied_with_best": 1}}
+  }
+}

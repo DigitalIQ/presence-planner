@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "default_fov_v": 90,
+  "profiles": [
+    {
+      "id": "aqara_fp300", "name": "Aqara Presence Multi-Sensor FP300", "manufacturer": "Aqara",
+      "match": ["fp300", "ps-s04d", "ps-s04e", "presence multi-sensor"], "tech": "hybrid",
+      "fov_h": 120, "fov_v": null, "reach": 6, "reach_static": null,
+      "mounts": ["wall", "corner", "ceiling"], "ceiling": null, "verified": true,
+      "source": "https://www.aqara.com/en/product/presence-multi-sensor-fp300/",
+      "note": "Manual: side mounting 1.4–1.8 m, about 2 m tilted down for larger areas. Detection range limit only in Zigbee mode."
+    },
+    {
+      "id": "aqara_fp400", "name": "Aqara Spatial Multi Sensor FP400", "manufacturer": "Aqara",
+      "match": ["fp400", "ps-s05d", "spatial multi sensor"], "tech": "mmwave",
+      "fov_h": 120, "fov_v": null, "reach": 10, "reach_static": null,
+      "mounts": ["wall", "corner", "ceiling"], "ceiling": { "fov": 120, "reach": 4 }, "verified": true,
+      "source": "https://www.aqara.com/en/product/spatial-multi-sensor-fp400/",
+      "note": "Side mounting covers about 10 m deep × 8 m wide, corner 7 × 7 m; ceiling 3–4 m recommended."
+    },
+    {
+      "id": "aqara_p1", "name": "Aqara Motion Sensor P1", "manufacturer": "Aqara",
+      "match": ["motion sensor p1", "rtcgq14lm", "ms-s02"], "tech": "pir",
+      "fov_h": 150, "fov_v": null, "reach": 7, "reach_static": 0,
+      "mounts": ["wall", "corner", "ceiling"], "ceiling": null, "verified": true,
+      "source": "https://www.aqara.com/en/product/motion-sensor-p1/",
+      "note": "170° up to 2 m, 150° up to 7 m. PIR: detects motion only, no stationary presence."
+    },
+    {
+      "id": "everything_presence_one", "name": "Everything Presence One", "manufacturer": "Everything Smart Technology",
+      "match": ["everything presence one", "everything-presence-one"], "tech": "hybrid",
+      "fov_h": 100, "fov_v": 40, "reach": 25, "reach_static": null,
+      "mounts": ["wall", "corner"], "ceiling": null, "verified": true,
+      "source": "https://shop.everythingsmart.io/products/everything-presence-one-kit",
+      "note": "mmWave 100° × 40°, 25 m; PIR 12 m."
+    },
+    {
+      "id": "switchbot_presence", "name": "SwitchBot Presence Sensor", "manufacturer": "SwitchBot",
+      "match": ["switchbot presence"], "tech": "mmwave",
+      "fov_h": 120, "fov_v": null, "reach": 8, "reach_static": 5,
+      "mounts": ["wall", "corner"], "ceiling": null, "verified": true,
+      "source": "https://www.switch-bot.com/products/switchbot-presence-sensor",
+      "note": "8 m for moving, 5 m for stationary people."
+    },
+    {
+      "id": "aqara_fp2", "name": "Aqara Presence Sensor FP2", "manufacturer": "Aqara",
+      "match": ["fp2", "ps-s02"], "tech": "mmwave",
+      "fov_h": 120, "fov_v": null, "reach": 8, "reach_static": null,
+      "mounts": ["wall", "corner", "ceiling"], "ceiling": { "fov": 120, "reach": 2 }, "verified": false,
+      "source": "https://www.123led.nl/pdf/LAQ00045.pdf",
+      "note": "Values from a copy of the manual hosted by a retailer, not from aqara.com."
+    },
+    {
+      "id": "aqara_fp1e", "name": "Aqara Presence Sensor FP1E", "manufacturer": "Aqara",
+      "match": ["fp1e", "ps-s03"], "tech": "mmwave",
+      "fov_h": 120, "fov_v": null, "reach": 6, "reach_static": null,
+      "mounts": ["wall", "corner", "ceiling"], "ceiling": { "fov": 120, "reach": 4 }, "verified": false,
+      "source": "https://123led.nl/pdf/LAQ00070_handleiding.pdf",
+      "note": "Values from a copy of the manual hosted by a retailer, not from aqara.com."
+    },
+    {
+      "id": "aqara_p2", "name": "Aqara Motion and Light Sensor P2", "manufacturer": "Aqara",
+      "match": ["motion and light sensor p2", "ml-s02"], "tech": "pir",
+      "fov_h": 150, "fov_v": null, "reach": 7, "reach_static": 0,
+      "mounts": ["wall", "corner", "ceiling"], "ceiling": null, "verified": false,
+      "source": "https://www.domadoo.fr/en/smart-home-security-alarm/7048-aqara-matter-over-thread-aqara-motion-and-light-sensor-p2-6970504219656.html",
+      "note": "Retailer values (angle given as 120° or 170°). PIR: motion only."
+    },
+    {
+      "id": "everything_presence_lite", "name": "Everything Presence Lite", "manufacturer": "Everything Smart Technology",
+      "match": ["everything presence lite", "everything-presence-lite"], "tech": "mmwave",
+      "fov_h": 120, "fov_v": null, "reach": 6, "reach_static": null,
+      "mounts": ["wall", "corner"], "ceiling": null, "verified": false,
+      "source": "https://devices.esphome.io/devices/Everything-Presence-Lite",
+      "note": "Range from the vendor page, field of view from the LD2450 radar spec."
+    },
+    {
+      "id": "hue_motion_indoor", "name": "Philips Hue Motion Sensor (indoor)", "manufacturer": "Signify",
+      "match": ["hue motion sensor", "sml001", "sml003"], "tech": "pir",
+      "fov_h": 100, "fov_v": null, "reach": 5, "reach_static": 0,
+      "mounts": ["wall", "corner", "ceiling"], "ceiling": null, "verified": false,
+      "source": "https://www.philips-hue.com/en-us/p/hue-motion-sensor/046677570972",
+      "note": "Retailer values (100° or 120°). PIR: motion only."
+    },
+    {
+      "id": "apollo_msr2", "name": "Apollo MSR-2", "manufacturer": "Apollo Automation",
+      "match": ["msr-2", "msr2"], "tech": "mmwave",
+      "fov_h": 120, "fov_v": null, "reach": 6, "reach_static": null,
+      "mounts": ["wall", "corner", "ceiling"], "ceiling": null, "verified": false,
+      "source": "https://wiki.apolloautomation.com/products/general/mmwave-presence-sensor-comparison/",
+      "note": "LD2410B radar, 6 m; angle not stated by the vendor."
+    },
+    {
+      "id": "apollo_mtr1", "name": "Apollo MTR-1", "manufacturer": "Apollo Automation",
+      "match": ["mtr-1", "mtr1"], "tech": "mmwave",
+      "fov_h": 120, "fov_v": null, "reach": 6, "reach_static": null,
+      "mounts": ["wall", "corner"], "ceiling": null, "verified": false,
+      "source": "https://wiki.apolloautomation.com/products/general/mmwave-presence-sensor-comparison/",
+      "note": "LD2450 radar, 6 m; 120° from the radar spec, not the vendor."
+    },
+    {
+      "id": "custom", "name": "Custom", "manufacturer": "", "match": [], "tech": "mmwave",
+      "fov_h": 120, "fov_v": 90, "reach": 6, "reach_static": null,
+      "mounts": ["wall", "corner", "ceiling"], "ceiling": null, "verified": false,
+      "source": "", "note": "Your own values."
+    }
+  ]
+}
