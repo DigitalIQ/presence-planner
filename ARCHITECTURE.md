@@ -171,3 +171,53 @@ Component boundaries:
 - `pytest tests/core` (model, golden generation via `python -m custom_components.presence_planner.core.golden`), `pytest tests/integration` (pytest-homeassistant-custom-component).
 - `node --test frontend/test` (JS core against `shared/golden`).
 - GitHub Actions: HACS validation (`hacs/action@main`, category `integration`), hassfest, pytest, node tests, build check.
+
+## Exact core API (Python and JS use the same names in their language style)
+
+Python (`custom_components/presence_planner/core/__init__.py` re-exports):
+
+```python
+load_profiles() -> dict                      # parsed shared/profiles.json (bundled copy at core/profiles.json, kept identical by a test)
+resolve_sensor(sensor: dict, profiles: dict) -> dict   # fills fov_h, fov_v, reach, mount defaults from the profile; fov_v None → profiles["default_fov_v"], adds "fov_v_assumed": True
+build_model(plan: dict, floor_id: str) -> Model        # Model is a dataclass; plain lists/dicts inside, JSON-serialisable via model_to_dict()
+detect(model: Model, sensor: dict, point: tuple[float, float, float], opts: dict) -> float   # point = (x, y, z), y = height
+evaluate(model: Model, sensors: list[dict], opts: dict) -> dict
+spill_detail(model: Model, sensor: dict, opts: dict) -> dict
+optimize(model: Model, room_id: str, profile_id: str, opts: dict, weight: float = 1.0, profiles: dict | None = None) -> list[dict]
+```
+
+Default opts: `{"heights": [0.5, 0.9, 1.3], "doors": "open", "thin_db": 10, "cell": 0.1}`.
+
+`evaluate` returns:
+
+```json
+{
+  "rooms": { "<room_id>": {
+      "coverage": { "0.5": 0.0, "0.9": 0.0, "1.3": 0.0 }, "coverage_mean": 0.0,
+      "seen": { "0.5": 0.0, "0.9": 0.0, "1.3": 0.0 },
+      "misfire_risk": 0.0,
+      "from": { "<entity_id>": 0.0 },
+      "own_sensors": ["<entity_id>"] } },
+  "sensors": { "<entity_id>": { "room": "<room_id or null>", "glass": 0.0, "spill": { "<room_id>": 0.0 } } },
+  "zones": [ { "name": "bed", "room": "<room_id>", "height": 0.5, "share": 0.0 } ],
+  "grid": { "1.3": [ { "x": 0.0, "z": 0.0, "room": "<room_id>", "own": 0.0, "own_sensor": "<entity_id or null>", "spill": ["<entity_id>"] } ] }
+}
+```
+
+`grid` is only filled when `opts["grid"]` is true (the panel asks for it, the integration does not). Shares are 0…1 rounded to 4 decimals. `from` and `spill` measured at 1.3 m.
+
+`spill_detail` returns `{ "<foreign_room_id>": { "total": 0.0, "walls": 0.0, "doors": { "<door_id>": 0.0 } } }` at 1.3 m.
+
+`optimize` returns up to 5 `{ "x", "z", "height", "phi", "tilt", "mount", "score", "coverage", "spill": { "<room_id>": share }, "glass" }`, best first.
+
+JS (`frontend/src/core/index.js`): `PROFILES, resolveSensor, buildModel, detect, evaluate, spillDetail, optimize` with identical semantics, camelCase names, same JSON keys in results (snake_case keys as above). `buildModel` returns a plain object that also carries drawing data for the panel and the 3D view:
+
+```js
+{ floor: {id, name, height}, rooms: [{id, name, area_id, points, height}], bands: [[x,z]...][] , faces: [{a, b, n, room}],
+  segments: [{a, b, k: "block"|"brick"|"thin"}], doors: [{id, a, b, hinge, tip, other, w, rooms: [id], contact, outside}],
+  windows: [{id, a, b, n, exterior}], glass: [{a, b, n}], freeWalls: [{poly, height, block}],
+  furniture: [{id, type, poly, h, obstacle}], zones: [{name, room, height, outer, inner}], cells: {"0.1": [...], "0.2": [...]},
+  bounds: {x0, x1, z0, z1} }
+```
+
+Golden files written by `python -m custom_components.presence_planner.core.golden` into `shared/golden/`: `demo-detect.json` (≥ 300 sensor/point samples with expected quality), `demo-evaluate.json` (evaluate on the demo plan, doors open and doors closed, without grid), `demo-spill.json`, `demo-optimize.json` (best candidate per room for `aqara_fp300`, weight 1, cell 0.2 to keep it fast).
