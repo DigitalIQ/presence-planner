@@ -151,7 +151,7 @@ The JS core must reproduce the golden results within 2 percentage points for sha
 ### Cleaned occupancy (per room R)
 
 - Own sensors of R: active plan sensors located in R. Their HA states are the inputs.
-- For each own sensor `s` and neighbour room `N` with `spill_detail(s)[N].total ≥ spill_threshold`: an `on` of `s` is an **echo candidate** while a sensor `t` located in N is `on`, `t` turned on before `s`, `s` turned on within `echo_window` after `t` or while `t` was already on, and every door through which `s` sees N is open or has no contact (a closed door with a contact removes that door's share; if the remaining share is below the threshold, `s` cannot echo into N).
+- For each own sensor `s` and neighbour room `N` with `spill_detail(s)[N].total ≥ spill_threshold`: an `on` of `s` is an **echo candidate** while a sensor `t` located in N is `on`, `t` turned on before `s`, `s` turned on within `echo_window` after `t` (a `t` that has been on for longer does not make `s` an echo: a second person, not a reflection), and every door through which `s` sees N is open or has no contact (a closed door with a contact removes that door's share; if the remaining share is below the threshold, `s` cannot echo into N).
 - R is occupied if at least one own sensor is `on` and not an echo candidate. An echo candidate becomes valid as soon as all its `t` sensors are `off`.
 - After the last valid `on` ends, R stays occupied for `hold_time`.
 - Attributes: `sources`, `suppressed_echoes`, `last_valid_sensor`. Fully unit-tested with a fake clock.

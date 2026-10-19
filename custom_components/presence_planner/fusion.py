@@ -4,8 +4,9 @@ Rules (ARCHITECTURE.md, "Cleaned occupancy"), for a room R:
 
 - Own sensors of R are the active plan sensors located in R.
 - An `on` of own sensor s is an echo candidate for neighbour room N (spill_detail(s)[N].total >= threshold) while
-  a sensor t located in N is on, t turned on before s, and s turned on within `echo_window` after t or while t
-  was already on. Doors: a closed door with a contact removes its share of the spill; if the remaining share is
+  a sensor t located in N is on, t turned on before s, and s turned on within `echo_window` after t. A t that
+  has been on for longer does not make s an echo (a second person, not a reflection; otherwise someone sitting
+  in one room would block every room its sensor overlaps). Doors: a closed door with a contact removes its share of the spill; if the remaining share is
   below the threshold, s cannot echo into N. Doors without a contact (or with an unknown state) count as open.
 - R is occupied if at least one own sensor is on and not an echo candidate. An echo candidate becomes valid as
   soon as all its t sensors are off.
@@ -13,8 +14,8 @@ Rules (ARCHITECTURE.md, "Cleaned occupancy"), for a room R:
 
 Reading of the rules where the contract leaves room:
 - "within echo_window after t": s turned on at most `echo_window` after an on of t while t was briefly off, and
-  t is on again within that window (a flickering motion sensor). "while t was already on": t's current on started
-  before s's on.
+  t is on again within that window (a flickering motion sensor) also counts.
+- An echo candidate stays a candidate while t stays on, even after the window has passed.
 - A candidate that became valid (all t off) stays valid until s turns off.
 - A valid on that turns into an echo candidate while s is still on (t back within the window, a door opened)
   does not start the hold: nothing was really there.
@@ -184,13 +185,14 @@ class RoomFusion:
                 t_on = self._on_since.get(other)
                 if t_on is None:
                     continue
-                # t was already on when s turned on, or s turned on within the echo window after an on of t
-                # and t (after a short off) is on again within that window
-                already_on = t_on < s_on
+                # s turned on within the echo window after t's current on, or after an earlier on of t while
+                # t (a flickering motion sensor) is on again within that window. A t that has been on for
+                # longer does not make s an echo: someone sitting in the living room must not block the hall.
+                direct = t_on < s_on <= t_on + self.echo_window
                 flicker = t_on <= s_on + self.echo_window and any(
                     t < s_on <= t + self.echo_window for t in self._history.get(other, ())
                 )
-                if already_on or flicker:
+                if direct or flicker:
                     causes.append(other)
         return causes
 

@@ -64,6 +64,34 @@ def test_echo_suppressed() -> None:
     assert result.last_valid_sensor is None
 
 
+def test_neighbour_on_for_longer_is_no_echo() -> None:
+    """The hall has been on longer than the echo window: the kitchen on is a second person, not an echo.
+
+    Otherwise someone sitting in one room would block the occupancy of every room its sensor overlaps.
+    """
+    fusion, clock = make()
+    fusion.update(HALL, True)
+    clock.tick(10)
+    result = fusion.update(KITCHEN, True)
+    assert result.occupied
+    assert result.sources == [KITCHEN]
+    assert result.suppressed_echoes == []
+
+
+def test_echo_stays_echo_after_the_window() -> None:
+    """Once classified as an echo, the on stays an echo while the neighbour stays on, even after the window."""
+    fusion, clock = make()
+    fusion.update(HALL, True)
+    clock.tick(2)
+    fusion.update(KITCHEN, True)
+    clock.tick(20)
+    result = fusion.step()
+    assert not result.occupied
+    assert result.suppressed_echoes == [KITCHEN]
+    result = fusion.update(HALL, False)
+    assert result.occupied
+
+
 def test_echo_after_neighbour_flicker_within_window() -> None:
     """The hall turned on 2 s before the kitchen, flickered off and is on again: still an echo."""
     fusion, clock = make()
