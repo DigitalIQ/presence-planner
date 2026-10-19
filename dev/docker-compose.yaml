@@ -1,0 +1,14 @@
+# Local Home Assistant for development (OrbStack or Docker Desktop).
+# Start: docker compose -f dev/docker-compose.yaml up -d   → http://localhost:8124
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:2026.10
+    container_name: pp-dev-ha
+    ports:
+      - "127.0.0.1:8124:8123"
+    volumes:
+      - ./config:/config
+      - ../custom_components/presence_planner:/config/custom_components/presence_planner
+    environment:
+      - TZ=Europe/Berlin
+    restart: unless-stopped

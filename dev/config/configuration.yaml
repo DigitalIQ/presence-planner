@@ -1,0 +1,7 @@
+# Local test instance for Presence Planner development. Not for production.
+default_config:
+
+logger:
+  default: info
+  logs:
+    custom_components.presence_planner: debug

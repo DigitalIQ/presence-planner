@@ -1,0 +1,15 @@
+{
+  "domain": "presence_planner",
+  "name": "Presence Planner",
+  "after_dependencies": ["neonplan3d"],
+  "codeowners": ["@DigitalIQ"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http", "panel_custom", "websocket_api"],
+  "documentation": "https://github.com/DigitalIQ/presence-planner",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/DigitalIQ/presence-planner/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}
