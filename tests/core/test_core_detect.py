@@ -3,8 +3,8 @@
 import math
 
 import pytest
-
 from core_helpers import expected_quality, make_plan, rect, sensor
+
 from custom_components.presence_planner.core import build_model, detect
 
 

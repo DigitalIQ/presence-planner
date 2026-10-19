@@ -2,8 +2,8 @@ import math
 import time
 
 import pytest
-
 from core_helpers import load_demo
+
 from custom_components.presence_planner.core import build_model, evaluate, load_profiles, optimize, resolve_sensor
 from custom_components.presence_planner.core.geometry import dist_point_segment, point_in_polygon
 from custom_components.presence_planner.core.optimize import is_hall_room
@@ -55,7 +55,7 @@ def test_results_avoid_doors_windows_and_tall_furniture(model, results):
 
 
 def test_results_are_sorted_distinct_and_deterministic(model, results):
-    for rid, res in results.items():
+    for res in results.values():
         scores = [c["score"] for c in res]
         assert scores == sorted(scores, reverse=True)
         for i, a in enumerate(res):

@@ -1,0 +1,95 @@
+// Furniture kinds offered by the editor. Type ids and default sizes follow NeonPlan 3D's furniture
+// library, so plans stay compatible with its import format. Sizes: [w, d, h] in metres.
+
+export const FURNITURE_GROUPS = {
+  lights: ["lamp_ceiling", "lamp_downlight", "lamp_spot", "lamp_panel", "lamp_pendant", "lamp_fan", "lamp_floor", "lamp_uplight", "lamp_table", "lamp_wall", "led_strip", "lamp_bollard", "lamp_garden"],
+  living: ["sofa", "sofa_l", "sofa_u", "armchair", "stool", "coffee_table", "tv_board", "tv_wall", "sideboard", "shelf", "plant", "rug"],
+  dining: ["table", "table_round", "chair", "bench", "corner_bench", "bar_stool"],
+  kitchen: ["kitchen", "kitchen_wall", "kitchen_tall", "island", "worktop", "sink", "stove", "dishwasher", "fridge"],
+  sleeping: ["bed", "bunk_bed", "nightstand", "wardrobe", "dresser"],
+  bath: ["bathtub", "shower", "wc", "washbasin", "washer", "dryer"],
+  work: ["desk", "office_chair", "tall_cabinet", "coat_rack", "radiator", "ac_unit", "stairs", "stairs_u", "robot_vacuum"],
+  household: ["waste_bin", "mailbox", "wall_switch", "wall_socket", "wifi_ap", "water_heater"],
+  outdoor: ["parking", "awning"],
+};
+
+export const FURNITURE_TYPES = [...new Set(Object.values(FURNITURE_GROUPS).flat())];
+
+export const FURNITURE_SIZE = {
+  lamp_ceiling: [0.4, 0.4, 0.08],
+  lamp_downlight: [0.1, 0.1, 0.02],
+  lamp_spot: [0.1, 0.1, 0.14],
+  lamp_panel: [0.6, 0.6, 0.03],
+  lamp_pendant: [0.4, 0.4, 0.8],
+  lamp_fan: [1.3, 1.3, 0.45],
+  lamp_floor: [0.4, 0.4, 1.7],
+  lamp_uplight: [0.35, 0.35, 1.8],
+  lamp_table: [0.28, 0.28, 0.45],
+  lamp_wall: [0.22, 0.12, 0.2],
+  led_strip: [2.0, 0.04, 0.03],
+  lamp_bollard: [0.16, 0.16, 0.8],
+  lamp_garden: [0.12, 0.12, 0.3],
+  sofa: [2.2, 0.9, 0.82],
+  sofa_l: [2.6, 1.8, 0.82],
+  sofa_u: [3.0, 2.2, 0.82],
+  armchair: [0.85, 0.85, 0.8],
+  stool: [0.55, 0.55, 0.42],
+  coffee_table: [1.1, 0.6, 0.42],
+  tv_board: [1.8, 0.42, 0.5],
+  tv_wall: [1.3, 0.08, 0.75],
+  sideboard: [1.6, 0.45, 0.8],
+  shelf: [0.9, 0.35, 1.9],
+  plant: [0.45, 0.45, 1.1],
+  rug: [2.0, 1.4, 0.01],
+  table: [1.6, 0.9, 0.75],
+  table_round: [1.1, 1.1, 0.75],
+  chair: [0.46, 0.5, 0.9],
+  bench: [1.4, 0.45, 0.85],
+  corner_bench: [2.0, 1.6, 0.9],
+  bar_stool: [0.42, 0.42, 0.75],
+  kitchen: [2.4, 0.62, 0.92],
+  kitchen_wall: [0.8, 0.35, 0.7],
+  kitchen_tall: [0.6, 0.62, 2.1],
+  island: [1.8, 0.9, 0.92],
+  worktop: [1.2, 0.62, 0.91],
+  sink: [0.9, 0.62, 0.92],
+  stove: [0.6, 0.62, 0.92],
+  dishwasher: [0.6, 0.62, 0.92],
+  fridge: [0.6, 0.65, 1.8],
+  bed: [1.6, 2.05, 0.9],
+  bunk_bed: [1.0, 2.05, 1.65],
+  nightstand: [0.45, 0.4, 0.5],
+  wardrobe: [1.8, 0.6, 2.1],
+  dresser: [1.0, 0.5, 0.9],
+  bathtub: [1.7, 0.75, 0.58],
+  shower: [0.9, 0.9, 2.0],
+  wc: [0.38, 0.6, 0.8],
+  washbasin: [0.6, 0.46, 0.85],
+  washer: [0.6, 0.6, 0.85],
+  dryer: [0.6, 0.6, 0.85],
+  desk: [1.4, 0.7, 0.75],
+  office_chair: [0.65, 0.65, 1.1],
+  tall_cabinet: [0.6, 0.6, 2.1],
+  coat_rack: [1.0, 0.35, 1.9],
+  radiator: [1.0, 0.1, 0.6],
+  ac_unit: [0.85, 0.22, 0.3],
+  stairs: [1.0, 3.2, 2.75],
+  stairs_u: [2.1, 2.7, 2.75],
+  robot_vacuum: [0.36, 0.5, 0.1],
+  waste_bin: [0.58, 0.73, 1.07],
+  mailbox: [0.38, 0.14, 0.34],
+  wall_switch: [0.085, 0.012, 0.085],
+  wall_socket: [0.085, 0.014, 0.085],
+  wifi_ap: [0.2, 0.2, 0.04],
+  water_heater: [0.56, 0.56, 1.5],
+  parking: [2.6, 5.2, 0.02],
+  awning: [3.0, 2.5, 0.22],
+};
+
+/** Kinds that are not obstacles for radar even when tall (mirrors the model rule in ARCHITECTURE.md). */
+const NON_OBSTACLE = new Set(["led_strip", "shower", "plant", "rug", "coat_rack"]);
+
+/** True when the model treats this furniture as a radar obstacle (h ≥ 1.5, not a lamp or a see-through kind). */
+export function isObstacle(f) {
+  return (f.h || 0) >= 1.5 && !String(f.type).startsWith("lamp_") && !NON_OBSTACLE.has(f.type);
+}

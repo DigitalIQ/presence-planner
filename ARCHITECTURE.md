@@ -76,7 +76,7 @@ Openings: `edge` and `offset` refer to the room edge; `offset` is the opening ce
 
 Furniture: `rotation` clockwise in degrees, `w` along the front, `d` depth. Footprint corner `(a, b)` in local coordinates maps to `(x + a·cos r − b·sin r, z + a·sin r + b·cos r)`.
 
-`background` (editor only): `{ "asset": "<id>", "x": 0, "z": 0, "width": 8.0, "rotation": 0, "opacity": 0.5 }`.
+`background` (editor only): `{ "image": "<data URL>", "x": 0, "z": 0, "width": 8.0, "rotation": 0, "opacity": 0.5 }`. The image is stored inline as a data URL, so it lives in the integration's store together with the plan.
 
 ## Sensor record `pp-sensor`
 

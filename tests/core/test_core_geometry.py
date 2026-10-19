@@ -1,8 +1,8 @@
 import json
 
 import pytest
-
 from core_helpers import load_demo, make_plan, rect
+
 from custom_components.presence_planner.core import build_model, model_to_dict
 from custom_components.presence_planner.core.geometry import (
     clip_segment,

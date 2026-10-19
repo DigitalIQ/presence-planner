@@ -1,9 +1,16 @@
 import time
 
 import pytest
-
 from core_helpers import load_demo, make_plan, rect, sensor
-from custom_components.presence_planner.core import build_model, detect, evaluate, resolve_sensor, load_profiles, spill_detail
+
+from custom_components.presence_planner.core import (
+    build_model,
+    detect,
+    evaluate,
+    load_profiles,
+    resolve_sensor,
+    spill_detail,
+)
 from custom_components.presence_planner.core.model import get_cells
 
 OWN = {
