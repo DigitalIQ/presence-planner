@@ -232,6 +232,17 @@ export class PresencePlannerPanel extends LitElement {
     else this._evalTimer = setTimeout(run, 0);
   }
 
+  /** Model options for the 3D volume (doors, thin walls); same object while they do not change. */
+  _coreOpts3d() {
+    const o = S.coreOptions(this._s, this.hass && this.hass.states, { fast: false });
+    const key = JSON.stringify([o.doors, o.thin_db]);
+    if (this._opts3dKey !== key) {
+      this._opts3dKey = key;
+      this._opts3d = { doors: o.doors, thin_db: o.thin_db };
+    }
+    return this._opts3d;
+  }
+
   _runEval(fast) {
     if (!this._model) {
       this._eval = null;
@@ -650,7 +661,8 @@ export class PresencePlannerPanel extends LitElement {
                 : nothing}
               ${view !== "2d"
                 ? html`<div class="view"><pp-view3d .model=${this._model} .sensors=${resolved} .evaluation=${this._eval} .height=${st.height}
-                    .selected=${st.selected} .dark=${!!this._dark} .colors=${colors} .labels=${{ reset: t("view3d.reset"), top: t("view3d.top") }}
+                    .selected=${st.selected} .dark=${!!this._dark} .colors=${colors} .coreOpts=${this._coreOpts3d()}
+                    .labels=${{ reset: t("view3d.reset"), top: t("view3d.top"), mode: t("view3d.mode"), flat: t("view3d.mode_flat"), voxels: t("view3d.mode_voxels"), points: t("view3d.mode_points") }}
                     @select=${(e) => this.select(this._selectId(e.detail))}></pp-view3d></div>`
                 : nothing}
             </div>

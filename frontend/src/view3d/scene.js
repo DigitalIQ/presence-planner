@@ -14,6 +14,7 @@ import {
   DoubleSide,
   EdgesGeometry,
   Group,
+  InstancedMesh,
   LineBasicMaterial,
   LineSegments,
   Matrix4,
@@ -22,6 +23,8 @@ import {
   MeshLambertMaterial,
   NearestFilter,
   PerspectiveCamera,
+  Points,
+  PointsMaterial,
   Raycaster,
   RGBAFormat,
   Scene,
@@ -42,14 +45,34 @@ import {
   getPalette,
   parseColor,
   rasterizeCells,
-  sensorColourIndex,
   sensorColourMap,
+  sensorRgb,
+  volumeVoxels,
   sensorMeshBasis,
   sensorPosition,
 } from './geometry.js';
 
 const FOV = 40;
-const OVERLAY_LIFT = 0.004;
+// Far enough above furniture tops at exactly 0.5 / 0.9 / 1.3 m (kitchen counters) to never share a depth value.
+const OVERLAY_LIFT = 0.02;
+const VOLUME_MODES = new Set(['voxels', 'points']);
+
+/** A round white dot with a hard edge: points drawn with alphaTest stay opaque and need no sorting. */
+function dotTexture() {
+  const n = 32;
+  const data = new Uint8Array(n * n * 4);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const d = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2) / (n / 2);
+      const i = (y * n + x) * 4;
+      data[i] = data[i + 1] = data[i + 2] = 255;
+      data[i + 3] = d <= 1 ? 255 : 0;
+    }
+  }
+  const tex = new DataTexture(data, n, n, RGBAFormat, UnsignedByteType);
+  tex.needsUpdate = true;
+  return tex;
+}
 
 function toGeometry(data) {
   const g = new BufferGeometry();
@@ -158,22 +181,21 @@ export class SceneController {
   setState(next) {
     if (this._disposed) return;
     const prev = this.state;
-    const s = { dark: false, height: 0.9, ...next };
+    const s = { dark: false, height: 0.9, mode: 'flat', ...next };
     this.state = s;
     const modelChanged = s.model !== prev.model;
     const darkChanged = s.dark !== prev.dark || !prev.palette;
+    const modeChanged = s.mode !== prev.mode;
     if (darkChanged) {
       this.palette = getPalette(s.dark);
       this._applyPalette();
     }
-    if (modelChanged) this._buildStatic();
-    const sensorsChanged = modelChanged || darkChanged || s.sensors !== prev.sensors || s.colors !== prev.colors || s.selected !== prev.selected;
+    // the voxel view cuts the walls at the selected height, so a height change rebuilds the walls there
+    if (modelChanged || modeChanged || (s.mode === 'voxels' && s.height !== prev.height)) this._buildStatic();
+    const sensorsChanged =
+      modelChanged || darkChanged || modeChanged || s.sensors !== prev.sensors || s.colors !== prev.colors || s.selected !== prev.selected;
     if (sensorsChanged) this._buildSensors();
-    if (
-      sensorsChanged ||
-      s.evaluation !== prev.evaluation ||
-      s.height !== prev.height
-    ) {
+    if (sensorsChanged || s.evaluation !== prev.evaluation || s.volume !== prev.volume || s.height !== prev.height) {
       this._buildOverlay();
     }
     this.state.palette = this.palette;
@@ -282,7 +304,8 @@ export class SceneController {
     clearGroup(this.staticGroup, true);
     const model = this.state.model;
     if (!model) return;
-    const d = buildStaticData(model);
+    const cutY = this.state.mode === 'voxels' ? (this.state.height ?? 0.9) + 0.12 : undefined;
+    const d = buildStaticData(model, { cutY });
     this._wallHeight = d.wallHeight;
     const add = (data, mat, order = 0) => {
       if (!data.indices.length) return;
@@ -310,9 +333,10 @@ export class SceneController {
     const H = this._wallHeight ?? 2.6;
     const anySelected = !!selected && (sensors || []).some((s) => s.entity_id === selected);
     this._hitMeshes = [];
+    const volumeMode = VOLUME_MODES.has(this.state.mode);
     (sensors || []).forEach((s, i) => {
       if (!Number.isFinite(s.x) || !Number.isFinite(s.z)) return;
-      const rgb = colourRgb(colors, sensorColourIndex(s, i));
+      const rgb = sensorRgb(colors, s, i);
       const col = new Color().setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, SRGBColorSpace);
       const isSel = s.entity_id === selected;
       const active = s.active !== false;
@@ -347,14 +371,20 @@ export class SceneController {
       this._hitMeshes.push(hit);
 
       if (!active) return;
-      const fr = frustumGeometry(s, { yMin: 0, yMax: H });
-      const opacity = isSel ? 0.24 : anySelected ? 0.04 : 0.09;
-      const fm = new Mesh(
-        toGeometry({ positions: fr.positions, indices: fr.indices }),
-        new MeshBasicMaterial({ color: col, transparent: true, opacity, depthWrite: false, side: DoubleSide }),
-      );
-      fm.renderOrder = 6;
-      this.sensorGroup.add(fm);
+      // in the volume views only a short fan shows the direction; the full cone would leave the building
+      const fr = frustumGeometry(volumeMode ? { ...s, reach: Math.min(s.reach || 5, 0.9) } : s, { yMin: 0, yMax: H });
+      // The volume views show what the model really detects (walls included); a geometric cone there would
+      // only poke through walls. Without a volume, the cones stay, each with its own fixed draw order so
+      // overlapping cones do not swap places (and flicker) while the camera moves.
+      if (!volumeMode) {
+        const opacity = isSel ? 0.24 : anySelected ? 0.04 : 0.09;
+        const fm = new Mesh(
+          toGeometry({ positions: fr.positions, indices: fr.indices }),
+          new MeshBasicMaterial({ color: col, transparent: true, opacity, depthWrite: false, side: DoubleSide }),
+        );
+        fm.renderOrder = 6 + i * 0.01;
+        this.sensorGroup.add(fm);
+      }
       if (isSel) {
         const eg = new BufferGeometry();
         eg.setAttribute('position', new BufferAttribute(new Float32Array(fr.edges), 3));
@@ -367,6 +397,10 @@ export class SceneController {
 
   _buildOverlay() {
     clearGroup(this.overlayGroup);
+    if (VOLUME_MODES.has(this.state.mode)) {
+      this._buildVolume();
+      return;
+    }
     const { evaluation, model, height, sensors, colors, selected } = this.state;
     const cells = evaluation?.grid?.[height] ?? evaluation?.grid?.[String(height)];
     if (!model?.bounds || !cells || !cells.length) return;
@@ -395,6 +429,64 @@ export class SceneController {
     const mesh = new Mesh(g, new MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: DoubleSide }));
     mesh.renderOrder = 1;
     this.overlayGroup.add(mesh);
+  }
+
+  /**
+   * Coverage volume as voxels (opaque boxes up to the selected height, walls cut there) or as a point cloud
+   * (round opaque dots up to the ceiling). Both are opaque, so nothing depends on draw order: no flicker.
+   */
+  _buildVolume() {
+    const { volume, height, sensors, colors, selected, mode, dark } = this.state;
+    if (!volume?.grid) return;
+    const colourMap = sensorColourMap(sensors, colors);
+    const voxels = volumeVoxels(volume, {
+      maxY: mode === 'voxels' ? height + 1e-6 : Infinity,
+      colorFor: (id) => colourMap.get(id) || [31, 95, 153],
+      spillColor: parseColor(this.palette.spill),
+      fadeColor: dark ? [70, 74, 80] : [255, 255, 255],
+      selected: selected || null,
+    });
+    if (!voxels.count) return;
+    const colour = new Color();
+    if (mode === 'voxels') {
+      const box = new BoxGeometry(voxels.cell * 0.82, voxels.step * 0.82, voxels.cell * 0.82);
+      const mesh = new InstancedMesh(box, new MeshLambertMaterial(), voxels.count);
+      const m = new Matrix4();
+      for (let i = 0; i < voxels.count; i++) {
+        m.makeTranslation(voxels.positions[i * 3], voxels.positions[i * 3 + 1], voxels.positions[i * 3 + 2]);
+        mesh.setMatrixAt(i, m);
+        colour.setRGB(voxels.colors[i * 3] / 255, voxels.colors[i * 3 + 1] / 255, voxels.colors[i * 3 + 2] / 255, SRGBColorSpace);
+        mesh.setColorAt(i, colour);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      this.overlayGroup.add(mesh);
+      return;
+    }
+    const g = new BufferGeometry();
+    // A small fixed jitter inside each cell breaks the grid: aligned dots read as vertical streaks.
+    const jittered = new Float32Array(voxels.positions);
+    const hash = (n) => {
+      const x = Math.sin(n * 12.9898) * 43758.5453;
+      return x - Math.floor(x) - 0.5;
+    };
+    for (let i = 0; i < voxels.count; i++) {
+      jittered[i * 3] += hash(i * 3 + 1) * voxels.cell * 0.7;
+      jittered[i * 3 + 1] += hash(i * 3 + 2) * voxels.step * 0.7;
+      jittered[i * 3 + 2] += hash(i * 3 + 3) * voxels.cell * 0.7;
+    }
+    g.setAttribute('position', new BufferAttribute(jittered, 3));
+    const rgb = new Float32Array(voxels.count * 3);
+    for (let i = 0; i < voxels.count; i++) {
+      colour.setRGB(voxels.colors[i * 3] / 255, voxels.colors[i * 3 + 1] / 255, voxels.colors[i * 3 + 2] / 255, SRGBColorSpace);
+      rgb[i * 3] = colour.r;
+      rgb[i * 3 + 1] = colour.g;
+      rgb[i * 3 + 2] = colour.b;
+    }
+    g.setAttribute('color', new BufferAttribute(rgb, 3));
+    // a fresh texture each time: clearGroup disposes the material together with its map
+    const mat = new PointsMaterial({ size: voxels.cell * 0.8, sizeAttenuation: true, vertexColors: true, map: dotTexture(), alphaTest: 0.5 });
+    this.overlayGroup.add(new Points(g, mat));
   }
 
   // ------------------------------------------------------------ picking

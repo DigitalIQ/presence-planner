@@ -21,6 +21,9 @@ import {
   triangulate,
   DEFAULT_SENSOR_COLORS,
   getPalette,
+  sensorRgb,
+  volumeHeights,
+  volumeVoxels,
 } from '../src/view3d/geometry.js';
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -194,6 +197,71 @@ test('buildStaticData on a minimal model', () => {
 test('buildStaticData tolerates an empty model', () => {
   const d = buildStaticData({});
   assert.equal(d.walls.indices.length, 0);
+});
+
+test('buildStaticData: floors and thresholds have thickness (no coplanar faces), cutY cuts walls', () => {
+  const model = {
+    floor: { height: 2.6 },
+    rooms: [{ id: 'a', points: [[0, 0], [4, 0], [4, 3], [0, 3]] }],
+    bands: [[[0, -0.1], [4, -0.1], [4, 0.1], [0, 0.1]]],
+    doors: [{ id: 'd', a: [1, 0], b: [2, 0] }],
+    windows: [{ id: 'w', a: [3, 0], b: [3.8, 0], sill: 0.9, height: 1.1 }],
+    furniture: [{ id: 'c', poly: [[3, 2], [3.5, 2], [3.5, 2.5], [3, 2.5]], h: 2, obstacle: true }],
+  };
+  const d = buildStaticData(model);
+  near(meshVolume(d.floors), 4 * 3 * 0.05, 1e-6);
+  assert.ok(meshVolume(d.thresholds) > 0);
+  const full = meshVolume(d.walls);
+  const cut = buildStaticData(model, { cutY: 0.6 });
+  assert.equal(cut.cutY, 0.6);
+  const ys = [];
+  for (let i = 1; i < cut.walls.positions.length; i += 3) ys.push(cut.walls.positions[i]);
+  assert.ok(Math.max(...ys) <= 0.6 + 1e-9);
+  assert.ok(meshVolume(cut.walls) < full);
+  // the window starts at 0.9 m, above the cut: gone; the cabinet is cut to 0.6 m
+  assert.equal(cut.windows.indices.length, 0);
+  near(meshVolume(cut.obstacles), 0.25 * 0.6, 1e-6);
+});
+
+test('volumeHeights: cell centres from the floor to below the ceiling', () => {
+  assert.deepEqual(volumeHeights(1.0, 0.2), [0.1, 0.3, 0.5, 0.7, 0.9]);
+  assert.equal(volumeHeights(2.6, 0.2).at(-1), 2.5);
+  assert.equal(volumeHeights(0, 0.2).length, 13);
+});
+
+test('volumeVoxels: colours, spill, max height and selection', () => {
+  const volume = {
+    heights: [0.1, 0.3, 0.5],
+    cell: 0.2,
+    step: 0.2,
+    grid: {
+      0.1: [
+        { x: 1, z: 1, own: 1, own_sensor: 'a', spill: [] },
+        { x: 2, z: 1, own: 0, own_sensor: null, spill: [] },
+      ],
+      0.3: [{ x: 1, z: 1, own: 0, own_sensor: null, spill: ['b'] }],
+      0.5: [{ x: 1, z: 1, own: 0.5, own_sensor: 'a', spill: [] }],
+    },
+  };
+  const colorFor = () => [0, 100, 200];
+  const all = volumeVoxels(volume, { colorFor, spillColor: [255, 0, 0] });
+  assert.equal(all.count, 3);
+  assert.deepEqual(all.positions.slice(0, 3), [1, 0.1, 1]);
+  assert.deepEqual(all.colors.slice(0, 3), [0, 100, 200]);
+  assert.deepEqual(all.colors.slice(3, 6), [255, 0, 0]);
+  // weak detection is paler (mixed with the fade colour white)
+  assert.ok(all.colors[6] > 0 && all.colors[7] > 100);
+  assert.equal(volumeVoxels(volume, { colorFor, maxY: 0.3 }).count, 2);
+  // with another sensor selected, 'a' fades towards white
+  const sel = volumeVoxels(volume, { colorFor, spillColor: [255, 0, 0], selected: 'b' });
+  assert.ok(sel.colors[0] > 150);
+  assert.deepEqual(sel.colors.slice(3, 6), [255, 0, 0]);
+});
+
+test('sensorRgb reads the panel colour map by entity id', () => {
+  assert.deepEqual(sensorRgb({ 'binary_sensor.a': '#102030' }, { entity_id: 'binary_sensor.a' }, 3), [16, 32, 48]);
+  assert.deepEqual(sensorRgb(null, { entity_id: 'x' }, 0), colourRgb(null, 0));
+  assert.deepEqual(sensorRgb(['#000000', '#ffffff'], { entity_id: 'x' }, 1), [255, 255, 255]);
 });
 
 test('frameBounds iso: target near the bounds centre, whole box inside the view', () => {

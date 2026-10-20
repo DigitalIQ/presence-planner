@@ -378,8 +378,14 @@ export function panelData(a, b, y0, y1) {
  * Walls come from model.bands (openings cut as described above), free walls and
  * furniture from their footprints, windows as panes, doors as a floor threshold.
  */
-export function buildStaticData(model) {
-  const H = model?.floor?.height > 0 ? model.floor.height : 2.6;
+/**
+ * Static geometry of the floor. `opts.cutY` cuts walls, free walls, tall furniture and windows at that height
+ * (a "dollhouse" cut, so the voxels inside stay visible).
+ */
+export function buildStaticData(model, opts = {}) {
+  const fullH = model?.floor?.height > 0 ? model.floor.height : 2.6;
+  const cut = opts.cutY > 0 ? Math.min(opts.cutY, fullH) : fullH;
+  const H = fullH;
   const doors = model?.doors || [];
   const windows = model?.windows || [];
   const openings = [
@@ -395,24 +401,32 @@ export function buildStaticData(model) {
     }),
   ];
 
+  // Floors are thin slabs below 0: a zero-height prism has its top and bottom face in one plane, and the two
+  // fight for the same pixels (flicker while orbiting).
   const floors = [];
-  for (const r of model?.rooms || []) floors.push(prismData(r.points, 0, 0));
+  for (const r of model?.rooms || []) floors.push(prismData(r.points, -0.05, 0));
 
   const walls = [];
   for (const band of model?.bands || []) {
-    for (const piece of splitBandByOpenings(band, openings, H)) walls.push(prismData(piece.poly, piece.y0, piece.y1));
+    for (const piece of splitBandByOpenings(band, openings, H)) {
+      if (piece.y0 >= cut - 1e-6) continue;
+      walls.push(prismData(piece.poly, piece.y0, Math.min(piece.y1, cut)));
+    }
   }
 
   const freeWalls = [];
-  for (const fw of model?.freeWalls || []) freeWalls.push(prismData(fw.poly, 0, Math.min(fw.height ?? H, H)));
+  for (const fw of model?.freeWalls || []) freeWalls.push(prismData(fw.poly, 0, Math.min(fw.height ?? H, cut)));
 
   const furniture = [];
   const obstacles = [];
   for (const f of model?.furniture || []) {
-    (f.obstacle ? obstacles : furniture).push(prismData(f.poly, 0, f.h ?? 0.5));
+    (f.obstacle ? obstacles : furniture).push(prismData(f.poly, 0, Math.min(f.h ?? 0.5, cut)));
   }
 
-  const windowPanes = windows.map((w, i) => panelData(w.a, w.b, openings[doors.length + i].y0, openings[doors.length + i].y1));
+  const windowPanes = windows
+    .map((w, i) => ({ w, o: openings[doors.length + i] }))
+    .filter(({ o }) => o.y0 < cut - 1e-6)
+    .map(({ w, o }) => panelData(w.a, w.b, o.y0, Math.min(o.y1, cut)));
 
   const thresholds = doors.map((d) => {
     const dx = d.b[0] - d.a[0];
@@ -427,13 +441,14 @@ export function buildStaticData(model) {
         [d.b[0] + nx, d.b[1] + nz],
         [d.a[0] + nx, d.a[1] + nz],
       ],
-      0.01,
-      0.01,
+      0,
+      0.012,
     );
   });
 
   return {
     wallHeight: H,
+    cutY: cut,
     floors: mergeData(floors),
     walls: mergeData(walls),
     freeWalls: mergeData(freeWalls),
@@ -606,11 +621,70 @@ export function colourRgb(colors, index) {
   return parseColor(DEFAULT_SENSOR_COLORS[index % DEFAULT_SENSOR_COLORS.length]);
 }
 
+/**
+ * RGB of one sensor. The panel passes a map entity_id -> css colour (the same palette as the 2D map);
+ * a list is read by colour index. Without either, the default list is used.
+ */
+export function sensorRgb(colors, sensor, position) {
+  if (colors && typeof colors === 'object' && !Array.isArray(colors)) {
+    const own = parseColor(colors[sensor?.entity_id]);
+    if (own) return own;
+  }
+  return colourRgb(Array.isArray(colors) ? colors : null, sensorColourIndex(sensor, position));
+}
+
 /** Map entity_id -> rgb for a sensor list. */
 export function sensorColourMap(sensors, colors) {
   const out = new Map();
-  (sensors || []).forEach((s, i) => out.set(s.entity_id, colourRgb(colors, sensorColourIndex(s, i))));
+  (sensors || []).forEach((s, i) => out.set(s.entity_id, sensorRgb(colors, s, i)));
   return out;
+}
+
+// ---------------------------------------------------------------- coverage volume
+
+/** Layer heights for the coverage volume: cell centres from the floor to just below the ceiling. */
+export function volumeHeights(ceiling, step = 0.2) {
+  const H = ceiling > 0 ? ceiling : 2.6;
+  const out = [];
+  for (let h = step / 2; h < H - 0.05; h += step) out.push(Math.round(h * 1000) / 1000);
+  return out;
+}
+
+/**
+ * Voxels of a coverage volume (evaluate() with many heights and grid: true), up to maxY.
+ * Colour: the owning sensor's colour, paler where the detection is weak; cells that a sensor of another
+ * room sees are drawn in the spill colour. With a selected sensor, everything else fades.
+ * Returns flat arrays (x, y, z per voxel; r, g, b 0..255 per voxel) so the scene can fill one InstancedMesh.
+ */
+export function volumeVoxels(volume, opts = {}) {
+  const grid = volume?.grid || {};
+  const heights = (volume?.heights || Object.keys(grid).map(Number)).filter((h) => Number.isFinite(h)).sort((a, b) => a - b);
+  const maxY = opts.maxY ?? Infinity;
+  const fade = opts.fadeColor || [255, 255, 255];
+  const spillRgb = opts.spillColor || [229, 72, 77];
+  const sel = opts.selected || null;
+  const colorFor = opts.colorFor || (() => [31, 95, 153]);
+  const mix = (c, k) => [0, 1, 2].map((i) => Math.round(fade[i] + (c[i] - fade[i]) * k));
+  const pos = [];
+  const rgb = [];
+  for (const h of heights) {
+    if (h > maxY + 1e-6) continue;
+    for (const cell of grid[String(h)] || []) {
+      const spill = cell.spill && cell.spill.length > 0;
+      const own = cell.own > 0 && cell.own_sensor;
+      if (!spill && !own) continue;
+      let c;
+      if (spill) {
+        c = sel && !cell.spill.includes(sel) ? mix(spillRgb, 0.25) : spillRgb;
+      } else {
+        const k = 0.35 + 0.65 * Math.min(1, cell.own);
+        c = mix(colorFor(cell.own_sensor), sel && cell.own_sensor !== sel ? k * 0.25 : k);
+      }
+      pos.push(cell.x, h, cell.z);
+      rgb.push(c[0], c[1], c[2]);
+    }
+  }
+  return { count: pos.length / 3, positions: pos, colors: rgb, cell: volume?.cell || 0.2, step: volume?.step || 0.2 };
 }
 
 // ---------------------------------------------------------------- coverage raster
