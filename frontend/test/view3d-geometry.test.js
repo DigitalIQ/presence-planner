@@ -23,6 +23,7 @@ import {
   getPalette,
   sensorRgb,
   volumeHeights,
+  volumeTexture,
   volumeVoxels,
 } from '../src/view3d/geometry.js';
 
@@ -387,4 +388,35 @@ test('rasterizeCells caps the texture size on large plans', () => {
   const img = rasterizeCells([], { bounds: { x0: 0, x1: 200, z0: 0, z1: 100 }, cellSize: 0.1 });
   assert.ok(img.width <= 2100 && img.height <= 2100);
   assert.equal(img.data.length, img.width * img.height * 4);
+});
+
+test('volumeTexture: cells land at x-fastest, then height, then z', () => {
+  const volume = {
+    heights: [0.1, 0.3],
+    cell: 0.2,
+    step: 0.2,
+    grid: {
+      0.1: [{ x: 0.1, z: 0.1, own: 1, own_sensor: 'a', spill: [] }],
+      0.3: [{ x: 0.3, z: 0.5, own: 0, own_sensor: null, spill: ['b'] }],
+    },
+  };
+  const t = volumeTexture(volume, { x0: 0, x1: 0.6, z0: 0, z1: 0.6 }, { colorFor: () => [10, 20, 30], spillColor: [200, 0, 0], spillStrength: 0.5 });
+  assert.deepEqual([t.nx, t.ny, t.nz], [3, 2, 3]);
+  assert.deepEqual(t.origin, [0, 0, 0]);
+  near(t.size[1], 0.4);
+  assert.deepEqual([...t.data.slice(0, 4)], [10, 20, 30, 255]);
+  const i = ((2 * t.ny + 1) * t.nx + 1) * 4;
+  assert.deepEqual([...t.data.slice(i, i + 4)], [200, 0, 0, 128]);
+  assert.equal(t.data.filter((v, k) => k % 4 === 3 && v > 0).length, 2);
+});
+
+test('volumeTexture: blur softens inside a room but never bleeds into the next room', () => {
+  const rowA = [0.1, 0.3, 0.5].map((x) => ({ x, z: 0.1, room: 'a', own: 1, own_sensor: 's', spill: [] }));
+  const rowB = [0.7, 0.9].map((x) => ({ x, z: 0.1, room: 'b', own: 0, own_sensor: null, spill: [] }));
+  const volume = { heights: [0.1], cell: 0.2, step: 0.2, grid: { 0.1: [...rowA, ...rowB] } };
+  const t = volumeTexture(volume, { x0: 0, x1: 1.0, z0: 0, z1: 0.2 }, { colorFor: () => [0, 200, 0], blur: 3 });
+  const alpha = (xi) => t.data[xi * 4 + 3];
+  assert.ok(alpha(0) > 200 && alpha(2) > 200, 'room a stays bright');
+  assert.equal(alpha(3), 0, 'room b gets nothing from room a');
+  assert.equal(alpha(4), 0);
 });

@@ -165,7 +165,7 @@
   "view3d.reset": "Ansicht zurücksetzen",
   "view3d.top": "Draufsicht",
   "view3d.mode": "Darstellung",
-  "view3d.mode_flat": "Fläche",
+  "view3d.mode_light": "Licht",
   "view3d.mode_voxels": "Voxel",
   "view3d.mode_points": "Punktwolke",
 

@@ -4,6 +4,7 @@
 // camera is moving (user input or damping), never continuously.
 
 import {
+  AdditiveBlending,
   AmbientLight,
   BoxGeometry,
   BufferAttribute,
@@ -22,6 +23,7 @@ import {
   MeshBasicMaterial,
   MeshLambertMaterial,
   NearestFilter,
+  NormalBlending,
   PerspectiveCamera,
   Points,
   PointsMaterial,
@@ -50,14 +52,28 @@ import {
   volumeVoxels,
   sensorMeshBasis,
   sensorPosition,
+  volumeTexture,
 } from './geometry.js';
+import { LightHaze, createLightUniforms, patchSurfaceMaterial, setLightVolume } from './light.js';
 
 const FOV = 40;
 // Far enough above furniture tops at exactly 0.5 / 0.9 / 1.3 m (kitchen counters) to never share a depth value.
 const OVERLAY_LIFT = 0.02;
-const VOLUME_MODES = new Set(['voxels', 'points']);
+const VOLUME_MODES = new Set(['light', 'voxels', 'points']);
 
-/** A round white dot with a hard edge: points drawn with alphaTest stay opaque and need no sorting. */
+// The light view darkens the room so the sensor light reads as light, in both themes.
+const NIGHT = {
+  background: '#0f1318',
+  floor: '#272d35',
+  wall: '#363e49',
+  freeWall: '#3e4753',
+  furniture: '#4b5564',
+  obstacle: '#566173',
+  window: '#5a8fbf',
+  door: '#8a6a3c',
+};
+
+/** A round white dot that fades towards its edge (soft, see-through points). */
 function dotTexture() {
   const n = 32;
   const data = new Uint8Array(n * n * 4);
@@ -66,7 +82,9 @@ function dotTexture() {
       const d = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2) / (n / 2);
       const i = (y * n + x) * 4;
       data[i] = data[i + 1] = data[i + 2] = 255;
-      data[i + 3] = d <= 1 ? 255 : 0;
+      // smooth falloff: solid core, soft rim
+      const a = d >= 1 ? 0 : Math.pow(1 - d * d, 1.6);
+      data[i + 3] = Math.round(a * 255);
     }
   }
   const tex = new DataTexture(data, n, n, RGBAFormat, UnsignedByteType);
@@ -127,10 +145,11 @@ export class SceneController {
 
     this.scene = new Scene();
     this.camera = new PerspectiveCamera(FOV, 1.5, 0.1, 200);
-    this.scene.add(new AmbientLight(0xffffff, 1.7));
-    const sun = new DirectionalLight(0xffffff, 1.6);
-    sun.position.set(-4, 10, 6);
-    this.scene.add(sun);
+    this.ambient = new AmbientLight(0xffffff, 1.7);
+    this.scene.add(this.ambient);
+    this.sun = new DirectionalLight(0xffffff, 1.6);
+    this.sun.position.set(-4, 10, 6);
+    this.scene.add(this.sun);
 
     this.staticGroup = new Group();
     this.sensorGroup = new Group();
@@ -146,6 +165,11 @@ export class SceneController {
       window: new MeshBasicMaterial({ transparent: true, opacity: 0.35, depthWrite: false, side: DoubleSide }),
       door: new MeshBasicMaterial({ side: DoubleSide }),
     };
+    // floors, walls and furniture receive the sensor light in the light view (uniform switch, no recompile)
+    this.lightUniforms = createLightUniforms();
+    for (const k of ['floor', 'wall', 'freeWall', 'furniture', 'obstacle']) patchSurfaceMaterial(this.mats[k], this.lightUniforms);
+    this.haze = new LightHaze(this.lightUniforms);
+    this.scene.add(this.haze.mesh);
 
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.screenSpacePanning = true;
@@ -186,7 +210,7 @@ export class SceneController {
     const modelChanged = s.model !== prev.model;
     const darkChanged = s.dark !== prev.dark || !prev.palette;
     const modeChanged = s.mode !== prev.mode;
-    if (darkChanged) {
+    if (darkChanged || (modeChanged && (s.mode === 'light' || prev.mode === 'light'))) {
       this.palette = getPalette(s.dark);
       this._applyPalette();
     }
@@ -238,6 +262,10 @@ export class SceneController {
     this.canvas.removeEventListener('pointerup', this._onPointerUp);
     this.canvas.removeEventListener('pointermove', this._onPointerMove);
     this.controls.dispose();
+    this.scene.remove(this.haze.mesh);
+    this.haze.dispose();
+    setLightVolume(this.lightUniforms, null);
+    this.lightUniforms.uPPVolume.value.dispose();
     disposeObject(this.scene);
     for (const m of Object.values(this.mats)) m.dispose();
     this.renderer.dispose();
@@ -253,7 +281,8 @@ export class SceneController {
       this._raf = 0;
       if (this._disposed) return;
       const moved = this.controls.update();
-      this.renderer.render(this.scene, this.camera);
+      if (this.state.mode === 'light' && this._lightReady) this.haze.render(this.renderer, this.scene, this.camera);
+      else this.renderer.render(this.scene, this.camera);
       if (moved) this._request();
     });
   }
@@ -286,7 +315,10 @@ export class SceneController {
   }
 
   _applyPalette() {
-    const p = this.palette;
+    const night = this.state.mode === 'light';
+    const p = night ? { ...this.palette, ...NIGHT } : this.palette;
+    this.ambient.intensity = night ? 0.6 : 1.7;
+    this.sun.intensity = night ? 0.45 : 1.6;
     this.scene.background = colorOf(p.background);
     this.mats.floor.color = colorOf(p.floor);
     this.mats.wall.color = colorOf(p.wall);
@@ -363,6 +395,14 @@ export class SceneController {
       outline.renderOrder = 5;
       this.sensorGroup.add(outline);
 
+      // Light view: a small glowing emitter so the light visibly starts at the sensor.
+      if (this.state.mode === 'light' && active) {
+        const glow = new Mesh(new SphereGeometry(0.07, 16, 12), new MeshBasicMaterial({ color: col }));
+        glow.position.set(...pos);
+        glow.renderOrder = 4;
+        this.sensorGroup.add(glow);
+      }
+
       // Invisible, larger click target.
       const hit = new Mesh(new SphereGeometry(0.22, 8, 6), new MeshBasicMaterial({ visible: false }));
       hit.position.set(...pos);
@@ -397,6 +437,11 @@ export class SceneController {
 
   _buildOverlay() {
     clearGroup(this.overlayGroup);
+    if (this.state.mode === 'light') {
+      this._buildLight();
+      return;
+    }
+    this._clearLight();
     if (VOLUME_MODES.has(this.state.mode)) {
       this._buildVolume();
       return;
@@ -429,6 +474,41 @@ export class SceneController {
     const mesh = new Mesh(g, new MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: DoubleSide }));
     mesh.renderOrder = 1;
     this.overlayGroup.add(mesh);
+  }
+
+  /** Light view: the coverage volume as a 3D texture for the haze and the lit surfaces. */
+  _buildLight() {
+    const { volume, model, sensors, colors, selected } = this.state;
+    if (!volume?.grid || !model?.bounds) {
+      this._clearLight();
+      return;
+    }
+    const colourMap = sensorColourMap(sensors, colors);
+    const lights = {};
+    for (const s of sensors || []) {
+      if (s.active === false || !Number.isFinite(s.x) || !Number.isFinite(s.z)) continue;
+      lights[s.entity_id] = [...sensorPosition(s), s.reach > 0 ? s.reach : 6];
+    }
+    const info = volumeTexture(volume, model.bounds, {
+      colorFor: (id) => colourMap.get(id) || [31, 95, 153],
+      spillColor: parseColor(this.palette.spill),
+      spillStrength: 0.45,
+      selected: selected || null,
+      lights,
+      blur: 2,
+      dilate: true,
+    });
+    setLightVolume(this.lightUniforms, info);
+    this.lightUniforms.uPPOn.value = info ? 1 : 0;
+    this.haze.fit();
+    this._lightReady = !!info;
+  }
+
+  _clearLight() {
+    if (!this._lightReady && !this.lightUniforms.uPPOn.value) return;
+    setLightVolume(this.lightUniforms, null);
+    this.haze.mesh.visible = false;
+    this._lightReady = false;
   }
 
   /**
@@ -485,8 +565,23 @@ export class SceneController {
     }
     g.setAttribute('color', new BufferAttribute(rgb, 3));
     // a fresh texture each time: clearGroup disposes the material together with its map
-    const mat = new PointsMaterial({ size: voxels.cell * 0.8, sizeAttenuation: true, vertexColors: true, map: dotTexture(), alphaTest: 0.5 });
-    this.overlayGroup.add(new Points(g, mat));
+    // See-through soft dots. One Points object with a fixed vertex order and its own render order (after
+    // furniture and windows), so the blending order never changes while the camera moves: no flicker.
+    // On the dark theme the dots add up like light; on the light theme additive blending would wash out.
+    const mat = new PointsMaterial({
+      size: voxels.cell * 1.7,
+      sizeAttenuation: true,
+      vertexColors: true,
+      map: dotTexture(),
+      transparent: true,
+      opacity: dark ? 0.32 : 0.38,
+      depthWrite: false,
+      alphaTest: 0.01,
+      blending: dark ? AdditiveBlending : NormalBlending,
+    });
+    const cloud = new Points(g, mat);
+    cloud.renderOrder = 8;
+    this.overlayGroup.add(cloud);
   }
 
   // ------------------------------------------------------------ picking

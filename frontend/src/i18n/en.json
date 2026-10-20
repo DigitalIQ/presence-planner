@@ -165,7 +165,7 @@
   "view3d.reset": "Reset view",
   "view3d.top": "Top view",
   "view3d.mode": "Display",
-  "view3d.mode_flat": "Plane",
+  "view3d.mode_light": "Light",
   "view3d.mode_voxels": "Voxels",
   "view3d.mode_points": "Point cloud",
 

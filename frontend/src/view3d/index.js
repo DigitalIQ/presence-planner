@@ -1,8 +1,8 @@
-// <pp-view3d>: rotatable 3D view of one floor with sensor fields of view and the coverage, shown as a
-// plane at the selected height, as voxels or as a point cloud. Boundary (see ARCHITECTURE.md):
+// <pp-view3d>: rotatable 3D view of one floor with the sensors and their coverage, shown as light
+// (raymarched haze and lit surfaces), as voxels or as a point cloud. Boundary (see ARCHITECTURE.md):
 //   properties  model, sensors, evaluation, height, selected, dark, colors, labels, coreOpts
 //   event       select  { detail: { entityId } }  when a sensor is clicked
-// For voxels and points the element evaluates the coverage volume itself (many heights, 20 cm cells) with
+// The element evaluates the coverage volume itself (many heights, 20 cm cells) with
 // the panel's model options (`coreOpts`: doors, thin_db), so the volume follows the same assumptions.
 
 import { LitElement, css, html } from 'lit';
@@ -10,13 +10,15 @@ import { evaluate } from '../core/index.js';
 import { volumeHeights } from './geometry.js';
 import { SceneController } from './scene.js';
 
-const MODES = ['flat', 'voxels', 'points'];
+const MODES = ['light', 'voxels', 'points'];
 const MODE_KEY = 'pp-view3d-mode';
-const VOLUME_CELL = 0.2;
+// the light view needs finer cells for smooth light; voxels and points stay at 20 cm
+const cellFor = (mode) => (mode === 'light' ? 0.1 : 0.2);
 
 function readMode() {
   try {
     const m = localStorage.getItem(MODE_KEY);
+    if (m === 'flat') return 'light'; // the former plane view became the light view
     return MODES.includes(m) ? m : 'voxels';
   } catch {
     return 'voxels';
@@ -119,7 +121,7 @@ export class PPView3D extends LitElement {
       reset: 'Reset view',
       top: 'Top view',
       mode: 'Display',
-      flat: 'Plane',
+      light: 'Light',
       voxels: 'Voxels',
       points: 'Point cloud',
       ...(this.labels || {}),
@@ -179,11 +181,11 @@ export class PPView3D extends LitElement {
       s.entity_id, s.x, s.z, s.height, s.phi, s.tilt, s.fov_h, s.fov_v, s.reach, s.mount, s.active, s.profile,
     ]);
     const { doors, thin_db } = this.coreOpts || {};
-    return { key: JSON.stringify([this._modelSeq, sensors, doors ?? null, thin_db ?? null]), doors, thin_db };
+    return { key: JSON.stringify([this._modelSeq, cellFor(this._mode), sensors, doors ?? null, thin_db ?? null]), doors, thin_db };
   }
 
   _scheduleVolume() {
-    if (this._mode === 'flat') return;
+
     const inputs = this._volumeInputs();
     if (!inputs || inputs.key === this._volumeKey || inputs.key === this._pendingKey) return;
     this._pendingKey = inputs.key;
@@ -195,13 +197,14 @@ export class PPView3D extends LitElement {
   _computeVolume(inputs) {
     this._pendingKey = null;
     if (!this.model) return;
-    const heights = volumeHeights(this.model.floor?.height, VOLUME_CELL);
+    const cell = cellFor(this._mode);
+    const heights = volumeHeights(this.model.floor?.height, 0.2);
     try {
-      const opts = { ...(this.coreOpts || {}), heights, cell: VOLUME_CELL, grid: true };
+      const opts = { ...(this.coreOpts || {}), heights, cell, grid: true };
       if (inputs.doors !== undefined) opts.doors = inputs.doors;
       if (inputs.thin_db !== undefined) opts.thin_db = inputs.thin_db;
       const ev = evaluate(this.model, this.sensors || [], opts);
-      this._volume = { grid: ev.grid, heights, cell: VOLUME_CELL, step: VOLUME_CELL };
+      this._volume = { grid: ev.grid, heights, cell, step: 0.2 };
     } catch (err) {
       console.warn('pp-view3d: volume evaluation failed', err);
       this._volume = null;
@@ -252,7 +255,7 @@ export class PPView3D extends LitElement {
       dark: this.dark,
       colors: this.colors,
       mode: this._mode,
-      volume: this._mode === 'flat' ? null : this._volume,
+      volume: this._volume,
     });
   }
 }

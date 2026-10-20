@@ -642,6 +642,162 @@ export function sensorColourMap(sensors, colors) {
 
 // ---------------------------------------------------------------- coverage volume
 
+/**
+ * The coverage volume as an RGBA 3D texture (x fastest, then y, then z, as WebGL expects for a
+ * Data3DTexture of size nx × ny × nz). rgb is the owning sensor's colour, a the detection strength;
+ * cells a sensor of another room sees get the spill colour at `spillStrength`. Empty cells stay 0, so
+ * linear filtering fades the light out softly at walls.
+ * Returns { data, nx, ny, nz, origin: [x, y, z] of the first cell's lower corner, size: [sx, sy, sz] }.
+ */
+export function volumeTexture(volume, bounds, opts = {}) {
+  const cell = volume?.cell || 0.2;
+  const step = volume?.step || 0.2;
+  const heights = (volume?.heights || []).slice().sort((a, b) => a - b);
+  if (!bounds || !heights.length) return null;
+  const colorFor = opts.colorFor || (() => [31, 95, 153]);
+  const spillRgb = opts.spillColor || [229, 72, 77];
+  const spillStrength = opts.spillStrength ?? 0.7;
+  const sel = opts.selected || null;
+  // Optional light falloff: { entity_id: [x, y, z, reach] }. The strength then drops with the distance to
+  // the owning sensor, so the coverage reads as light coming from the sensor and not as a filled room.
+  const lights = opts.lights || null;
+  const falloff = (id, x, y, z) => {
+    const l = lights && lights[id];
+    if (!l) return 1;
+    // like a lamp: bright at the sensor, about half at 2 m, a quarter at 4 m; never fully dark inside the
+    // covered area, and nothing beyond the reach (the model already ends the coverage there)
+    const d = Math.hypot(x - l[0], y - l[1], z - l[2]);
+    if (d > (l[3] || 6)) return 0.06;
+    return 0.06 + 0.94 / (1 + (d / 1.4) ** 2);
+  };
+  const x0 = bounds.x0;
+  const z0 = bounds.z0;
+  const nx = Math.max(1, Math.ceil((bounds.x1 - bounds.x0) / cell));
+  const nz = Math.max(1, Math.ceil((bounds.z1 - bounds.z0) / cell));
+  const ny = heights.length;
+  const data = new Uint8Array(nx * ny * nz * 4);
+  // room per cell (-1 = no room: wall or outside), for the room-aware blur
+  const rooms = new Int16Array(nx * ny * nz).fill(-1);
+  const roomIds = new Map();
+  heights.forEach((h, yi) => {
+    for (const c of volume.grid?.[String(h)] || []) {
+      const xi = Math.floor((c.x - x0) / cell);
+      const zi = Math.floor((c.z - z0) / cell);
+      if (xi < 0 || zi < 0 || xi >= nx || zi >= nz) continue;
+      if (!roomIds.has(c.room)) roomIds.set(c.room, roomIds.size);
+      rooms[(zi * ny + yi) * nx + xi] = roomIds.get(c.room);
+      const spill = c.spill && c.spill.length > 0;
+      let rgb;
+      let a;
+      if (spill) {
+        rgb = spillRgb;
+        a = spillStrength * (sel && !c.spill.includes(sel) ? 0.3 : 1);
+      } else if (c.own > 0 && c.own_sensor) {
+        rgb = colorFor(c.own_sensor);
+        a = Math.min(1, c.own) * falloff(c.own_sensor, c.x, h, c.z) * (sel && c.own_sensor !== sel ? 0.3 : 1);
+      } else continue;
+      const i = ((zi * ny + yi) * nx + xi) * 4;
+      data[i] = rgb[0];
+      data[i + 1] = rgb[1];
+      data[i + 2] = rgb[2];
+      data[i + 3] = Math.round(a * 255);
+    }
+  });
+  if (opts.blur > 0) blurInRooms(data, rooms, nx, ny, nz, opts.blur);
+  if (opts.dilate) dilateXZ(data, nx, ny, nz);
+  return { data, nx, ny, nz, origin: [x0, heights[0] - step / 2, z0], size: [nx * cell, ny * step, nz * cell] };
+}
+
+/**
+ * Soften the volume with a separable [1 2 1] blur along x, y and z, a few passes. Only cells of the same
+ * room are mixed, so no colour bleeds through a wall; colour is blurred premultiplied by strength.
+ */
+function blurInRooms(data, rooms, nx, ny, nz, passes) {
+  const n = nx * ny * nz;
+  let cur = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const a = data[i * 4 + 3] / 255;
+    cur[i * 4] = data[i * 4] * a;
+    cur[i * 4 + 1] = data[i * 4 + 1] * a;
+    cur[i * 4 + 2] = data[i * 4 + 2] * a;
+    cur[i * 4 + 3] = a;
+  }
+  let next = new Float32Array(n * 4);
+  const strides = [1, nx, nx * ny];
+  const dims = [nx, ny, nz];
+  for (let pass = 0; pass < passes; pass++) {
+    for (let axis = 0; axis < 3; axis++) {
+      const st = strides[axis];
+      for (let z = 0; z < nz; z++) {
+        for (let y = 0; y < ny; y++) {
+          for (let x = 0; x < nx; x++) {
+            const i = (z * ny + y) * nx + x;
+            const r = rooms[i];
+            if (r < 0) {
+              for (let k = 0; k < 4; k++) next[i * 4 + k] = cur[i * 4 + k];
+              continue;
+            }
+            const pos = axis === 0 ? x : axis === 1 ? y : z;
+            let w = 2;
+            let s0 = cur[i * 4] * 2, s1 = cur[i * 4 + 1] * 2, s2 = cur[i * 4 + 2] * 2, s3 = cur[i * 4 + 3] * 2;
+            for (const d of [-1, 1]) {
+              const q = pos + d;
+              if (q < 0 || q >= dims[axis]) continue;
+              const j = i + d * st;
+              if (rooms[j] !== r) continue;
+              s0 += cur[j * 4]; s1 += cur[j * 4 + 1]; s2 += cur[j * 4 + 2]; s3 += cur[j * 4 + 3];
+              w += 1;
+            }
+            next[i * 4] = s0 / w; next[i * 4 + 1] = s1 / w; next[i * 4 + 2] = s2 / w; next[i * 4 + 3] = s3 / w;
+          }
+        }
+      }
+      [cur, next] = [next, cur];
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    if (rooms[i] < 0) continue;
+    const a = cur[i * 4 + 3];
+    data[i * 4 + 3] = Math.round(Math.min(1, a) * 255);
+    if (a > 1e-4) {
+      data[i * 4] = Math.round(Math.min(255, cur[i * 4] / a));
+      data[i * 4 + 1] = Math.round(Math.min(255, cur[i * 4 + 1] / a));
+      data[i * 4 + 2] = Math.round(Math.min(255, cur[i * 4 + 2] / a));
+    }
+  }
+}
+
+/**
+ * Fill empty cells next to filled ones (in x and z) with the mean of their filled neighbours, at half
+ * strength. Wall faces rarely sit on the 20 cm grid; without this, linear filtering mixes in empty
+ * cells along a wall and draws stripes. Only empty cells change, so rooms do not bleed into each other.
+ */
+function dilateXZ(data, nx, ny, nz) {
+  const src = data.slice();
+  for (let z = 0; z < nz; z++) {
+    for (let y = 0; y < ny; y++) {
+      for (let x = 0; x < nx; x++) {
+        const i = ((z * ny + y) * nx + x) * 4;
+        if (src[i + 3] > 0) continue;
+        let r = 0, g = 0, b = 0, a = 0, n = 0;
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const xx = x + dx;
+          const zz = z + dz;
+          if (xx < 0 || zz < 0 || xx >= nx || zz >= nz) continue;
+          const j = ((zz * ny + y) * nx + xx) * 4;
+          if (src[j + 3] === 0) continue;
+          r += src[j]; g += src[j + 1]; b += src[j + 2]; a += src[j + 3]; n++;
+        }
+        if (!n) continue;
+        data[i] = Math.round(r / n);
+        data[i + 1] = Math.round(g / n);
+        data[i + 2] = Math.round(b / n);
+        data[i + 3] = Math.round(a / n / 2);
+      }
+    }
+  }
+}
+
 /** Layer heights for the coverage volume: cell centres from the floor to just below the ceiling. */
 export function volumeHeights(ceiling, step = 0.2) {
   const H = ceiling > 0 ? ceiling : 2.6;
