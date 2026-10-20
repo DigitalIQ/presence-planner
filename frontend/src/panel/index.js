@@ -662,7 +662,7 @@ export class PresencePlannerPanel extends LitElement {
               ${view !== "2d"
                 ? html`<div class="view"><pp-view3d .model=${this._model} .sensors=${resolved} .evaluation=${this._eval} .height=${st.height}
                     .selected=${st.selected} .dark=${!!this._dark} .colors=${colors} .coreOpts=${this._coreOpts3d()}
-                    .labels=${{ reset: t("view3d.reset"), top: t("view3d.top"), mode: t("view3d.mode"), light: t("view3d.mode_light"), voxels: t("view3d.mode_voxels"), points: t("view3d.mode_points") }}
+                    .labels=${{ reset: t("view3d.reset"), top: t("view3d.top"), mode: t("view3d.mode"), light: t("view3d.mode_light"), voxels: t("view3d.mode_voxels"), points: t("view3d.mode_points"), walls: t("view3d.walls"), walls_solid: t("view3d.walls_solid"), walls_ghost: t("view3d.walls_ghost"), walls_hidden: t("view3d.walls_hidden") }}
                     @select=${(e) => this.select(this._selectId(e.detail))}></pp-view3d></div>`
                 : nothing}
             </div>

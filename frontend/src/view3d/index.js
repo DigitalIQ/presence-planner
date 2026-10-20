@@ -12,6 +12,8 @@ import { SceneController } from './scene.js';
 
 const MODES = ['light', 'voxels', 'points'];
 const MODE_KEY = 'pp-view3d-mode';
+const WALLS = ['solid', 'ghost', 'hidden'];
+const WALLS_KEY = 'pp-view3d-walls';
 // the light view needs finer cells for smooth light; voxels and points stay at 20 cm
 const cellFor = (mode) => (mode === 'light' ? 0.1 : 0.2);
 
@@ -22,6 +24,15 @@ function readMode() {
     return MODES.includes(m) ? m : 'voxels';
   } catch {
     return 'voxels';
+  }
+}
+
+function readWalls() {
+  try {
+    const w = localStorage.getItem(WALLS_KEY);
+    return WALLS.includes(w) ? w : 'solid';
+  } catch {
+    return 'solid';
   }
 }
 
@@ -37,6 +48,7 @@ export class PPView3D extends LitElement {
     labels: { attribute: false },
     coreOpts: { attribute: false },
     _mode: { state: true },
+    _walls: { state: true },
   };
 
   static styles = css`
@@ -111,6 +123,7 @@ export class PPView3D extends LitElement {
     this.labels = {};
     this._ctl = null;
     this._mode = readMode();
+    this._walls = readWalls();
     this._volume = null;
     this._volumeKey = null;
     this._volumeTimer = 0;
@@ -124,6 +137,10 @@ export class PPView3D extends LitElement {
       light: 'Light',
       voxels: 'Voxels',
       points: 'Point cloud',
+      walls: 'Walls',
+      walls_solid: 'solid',
+      walls_ghost: 'transparent',
+      walls_hidden: 'hidden',
       ...(this.labels || {}),
     };
     return html`
@@ -134,6 +151,9 @@ export class PPView3D extends LitElement {
             (m) => html`<button type="button" aria-pressed=${this._mode === m ? 'true' : 'false'} @click=${() => this.setMode(m)}>${l[m]}</button>`,
           )}
         </div>
+        <button type="button" aria-pressed=${this._walls === 'solid' ? 'false' : 'true'} @click=${() => this.cycleWalls()}>
+          ${l.walls}: ${l['walls_' + this._walls]}
+        </button>
         <button type="button" @click=${() => this.resetView()}>${l.reset}</button>
         <button type="button" @click=${() => this.topView()}>${l.top}</button>
       </div>
@@ -145,6 +165,16 @@ export class PPView3D extends LitElement {
     this._mode = mode;
     try {
       localStorage.setItem(MODE_KEY, mode);
+    } catch {
+      /* the choice just is not remembered */
+    }
+  }
+
+  /** Walls: solid -> transparent -> hidden -> solid. */
+  cycleWalls() {
+    this._walls = WALLS[(WALLS.indexOf(this._walls) + 1) % WALLS.length];
+    try {
+      localStorage.setItem(WALLS_KEY, this._walls);
     } catch {
       /* the choice just is not remembered */
     }
@@ -255,6 +285,7 @@ export class PPView3D extends LitElement {
       dark: this.dark,
       colors: this.colors,
       mode: this._mode,
+      walls: this._walls,
       volume: this._volume,
     });
   }

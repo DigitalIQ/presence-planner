@@ -168,6 +168,10 @@
   "view3d.mode_light": "Light",
   "view3d.mode_voxels": "Voxels",
   "view3d.mode_points": "Point cloud",
+  "view3d.walls": "Walls",
+  "view3d.walls_solid": "solid",
+  "view3d.walls_ghost": "transparent",
+  "view3d.walls_hidden": "hidden",
 
   "room.outside": "outside"
 }

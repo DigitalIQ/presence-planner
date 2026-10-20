@@ -205,7 +205,7 @@ export class SceneController {
   setState(next) {
     if (this._disposed) return;
     const prev = this.state;
-    const s = { dark: false, height: 0.9, mode: 'flat', ...next };
+    const s = { dark: false, height: 0.9, mode: 'flat', walls: 'solid', ...next };
     this.state = s;
     const modelChanged = s.model !== prev.model;
     const darkChanged = s.dark !== prev.dark || !prev.palette;
@@ -223,7 +223,21 @@ export class SceneController {
       this._buildOverlay();
     }
     this.state.palette = this.palette;
+    if (s.walls !== prev.walls) this._applyWalls();
     this._request();
+  }
+
+  /** Walls solid, very transparent ("ghost") or invisible ("hidden"). Material switch only, no rebuild. */
+  _applyWalls() {
+    const w = this.state.walls;
+    for (const m of [this.mats.wall, this.mats.freeWall]) {
+      const ghost = w === 'ghost';
+      m.visible = w !== 'hidden';
+      m.transparent = ghost;
+      m.opacity = ghost ? 0.12 : 1;
+      m.depthWrite = !ghost;
+      m.needsUpdate = true;
+    }
   }
 
   resetView() {
