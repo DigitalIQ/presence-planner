@@ -6,6 +6,19 @@ Plan presence and motion sensors on your floor plan in Home Assistant: coverage 
 
 **Beta 0.1.0.** The results are a geometric planning aid. Check sensor spots and automations in your own home. Presence Planner is independent of NeonPlan 3D and of the sensor manufacturers.
 
+## Screenshots
+
+The images show an invented demo flat with five simulated sensors.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/planner-2d-dark.png">
+  <img src="docs/images/planner-2d-light.png" alt="2D planner with five sensors on a demo floor plan. Each room is colored by its own sensor's coverage, areas seen from another room are red, and the results table lists coverage at 0.5, 0.9 and 1.3 m and the misfire risk per room.">
+</picture>
+
+![3D view with voxel coverage at standing height. Each sensor's covered cells have its own color, red cells are seen by a sensor from another room.](docs/images/view-3d-voxels.png)
+
+More images in [docs/images](docs/images): the 3D light mode, the best-spot suggestion, the floor plan editor and the room entities in a dashboard.
+
 ## Requirements
 
 - Home Assistant **2026.10.2 or newer** within the supported 2026.10 series. Later HA series need their own compatibility check.
