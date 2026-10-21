@@ -17,7 +17,7 @@ assert hacs["homeassistant"] == "2026.10.2"
 assert json.loads((ROOT / "package.json").read_text())["version"] == manifest["version"]
 assert sorted(p.name for p in component.parent.iterdir() if p.is_dir() and p.name != "__pycache__") == [component.name]
 readme = (ROOT / "README.md").read_text()
-for heading in ("Installation", "Einrichtung", "Modellgrenzen", "Datenschutz", "Backup", "Entfernen"):
+for heading in ("Installation", "Setup", "Model limits", "Privacy", "Backup", "removing"):
     assert heading in readme, f"Missing documentation: {heading}"
 for name in ("presence-planner-panel.js", "presence-planner-worker.js"):
     assert (component / "frontend" / name).stat().st_size > 1000, f"Missing bundle: {name}"

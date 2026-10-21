@@ -2,74 +2,72 @@
 
 ![Presence Planner](custom_components/presence_planner/brand/icon.png)
 
-Plane Präsenz- und Bewegungssensoren auf deinem Grundriss in Home Assistant: Abdeckung je Raum und Höhe, Fehlschalt-Risiko, Vorschläge für Sensorplätze und eine bereinigte Raumbelegung. Mit eigenem Editor und 3D-Ansicht, eigenständig oder mit [NeonPlan 3D](https://github.com/Mastershort/neonplan3d).
+Plan presence and motion sensors on your floor plan in Home Assistant: coverage per room and height, false-trigger risk, suggested sensor spots and a cleaned room occupancy. With its own editor and a 3D view, standalone or together with [NeonPlan 3D](https://github.com/Mastershort/neonplan3d).
 
-**Beta 0.1.0.** Die Ergebnisse sind eine geometrische Planungshilfe. Prüfe Sensorplätze und Automationen in deiner Wohnung. Presence Planner ist unabhängig von NeonPlan 3D und den Sensorherstellern.
+**Beta 0.1.0.** The results are a geometric planning aid. Check sensor spots and automations in your own home. Presence Planner is independent of NeonPlan 3D and of the sensor manufacturers.
 
-## Voraussetzungen
+## Requirements
 
-- Home Assistant **2026.10.2 oder neuer** innerhalb der unterstützten 2026.10-Reihe. Spätere HA-Reihen brauchen einen eigenen Kompatibilitätscheck.
-- Adminrechte zum Einrichten, Importieren und Speichern. Angemeldete Benutzer können den gesamten Plan und die Sensorinformationen lesen und exportieren.
-- Ein Browser mit WebGL2 für die 3D-Ansicht. Der 2D-Planer ist auch ohne 3D nutzbar.
-- NeonPlan ist optional. Der Adapter wurde ursprünglich mit 1.19.2 und 1.21.0 geprüft. Er verwendet interne Laufzeitdaten, keine zugesicherte öffentliche API. Nach einem NeonPlan-Update gesondert prüfen.
+- Home Assistant **2026.10.2 or newer** within the supported 2026.10 series. Later HA series need their own compatibility check.
+- Admin rights to set up, import and save. Logged-in users can read and export the whole plan and the sensor information.
+- A browser with WebGL2 for the 3D view. The 2D planner also works without 3D.
+- NeonPlan is optional. The adapter was tested with 1.19.2 and 1.21.0. It uses internal runtime data, not a guaranteed public API. Check it separately after a NeonPlan update.
 
 ## Installation
 
-Der HACS-Weg setzt ein öffentlich freigegebenes Repository voraus. Solange dieses Repository privat ist, ist keine Installation über HACS möglich.
+1. In HACS, open the menu "Custom repositories" and add the URL `https://github.com/DigitalIQ/presence-planner` with the category **Integration**.
+2. Download Presence Planner and restart Home Assistant.
+3. Under **Settings → Devices & services → Add integration**, search for **Presence Planner** and confirm.
+4. Open the **Presence Planner** entry in the sidebar.
 
-1. In HACS im Menü „Benutzerdefinierte Repositories“ die URL `https://github.com/DigitalIQ/presence-planner` mit Kategorie **Integration** hinzufügen.
-2. Presence Planner herunterladen und Home Assistant neu starten.
-3. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen** nach **Presence Planner** suchen und bestätigen.
-4. Den Eintrag **Presence Planner** in der Seitenleiste öffnen.
+Alternatively, copy the complete folder `custom_components/presence_planner` to `<HA config>/custom_components/presence_planner`, restart and add the integration. The frontend bundles are included; Home Assistant does not need Node.js.
 
-Alternativ den vollständigen Ordner `custom_components/presence_planner` nach `<HA-Konfiguration>/custom_components/presence_planner` kopieren, neu starten und die Integration hinzufügen. Die Frontend-Bundles sind enthalten; auf HA wird kein Node.js benötigt.
+Inclusion in the HACS default list is a separate step ([hacs/default#12395](https://github.com/hacs/default/pull/12395)). Until it is merged, install Presence Planner as a custom repository.
 
-Die Aufnahme in die HACS-Standardliste ist ein eigener Veröffentlichungsschritt. Ein funktionierendes benutzerdefiniertes Repository bedeutet noch keine Aufnahme in diese Liste.
+## Setup
 
-## Einrichtung
+The integration options offer three plan sources:
 
-Die Integrationsoptionen bieten drei Planquellen:
+- **Automatic:** use a compatible, loaded NeonPlan, otherwise your own plan.
+- **NeonPlan:** prefer NeonPlan. If the connection is missing or structurally incompatible, an error is shown and the planner falls back to your own plan.
+- **Own floor plan:** create or import floors and rooms in the editor and assign them to HA areas.
 
-- **Automatisch:** kompatibles geladenes NeonPlan verwenden, sonst den eigenen Plan.
-- **NeonPlan:** NeonPlan bevorzugen. Bei fehlender oder strukturell inkompatibler Anbindung wird ein Fehler angezeigt und auf den eigenen Plan zurückgefallen.
-- **Eigener Grundriss:** Etagen und Räume im Editor anlegen oder importieren und HA-Bereichen zuordnen.
+Add sensor entities, place them, check their profiles and save your changes. Each room gets coverage, false-trigger risk and cleaned occupancy. Profiles preset field of view and range; check the mounting yourself.
 
-Sensor-Entitäten hinzufügen, platzieren, Profile prüfen und Änderungen speichern. Pro Raum entstehen Abdeckung, Fehlschalt-Risiko und bereinigte Belegung. Profile belegen Sichtfeld und Reichweite vor; die Montage bleibt zu prüfen.
+With NeonPlan, **Save** writes the sensor placement fields and the planner's own extras. The link button adds an entry to NeonPlan's menu only when you click it. Floor plan imports change your own plan, not the NeonPlan building.
 
-Bei NeonPlan schreibt **Speichern** Sensorplatzierungsfelder und eigene Planner-Extras. Der Button zum Verlinken ergänzt NeonPlans Menü nur auf ausdrücklichen Klick. Grundriss-Importe verändern den eigenen Plan, nicht das NeonPlan-Gebäude.
+## Backup and import
 
-## Backup und Import
+**Export** downloads `presence-planner-backup.json`. The outer format is a NeonPlan exchange format. The extra field `presence_planner` holds the complete native plan and the sensor spots. A later planner import therefore also restores HA assignments, door contacts, wall values and background images. NeonPlan can use the outer exchange data and ignores the planner extras.
 
-**Export** lädt `presence-planner-backup.json` herunter. Das äußere Format ist ein NeonPlan-Austauschformat. Das Zusatzfeld `presence_planner` enthält den vollständigen nativen Plan und die Sensorplätze. Ein erneuter Planner-Import erhält dadurch auch HA-Zuordnungen, Türkontakte, Wandwerte und Hintergrundbilder. NeonPlan kann die äußeren Austauschdaten verwenden und ignoriert die Planner-Zusatzdaten.
+An import **replaces** your own plan and its sensor list. A file without sensors therefore clears your existing sensor spots. Export first if you want to keep the old state. Plain NeonPlan exchange files cannot restore assignments that their format does not contain.
 
-Ein Import **ersetzt** den eigenen Plan und seine Sensorliste. Eine Datei ohne Sensoren leert daher die bisherigen eigenen Sensorplätze. Vorher exportieren, wenn du den alten Stand behalten möchtest. Reine NeonPlan-Austauschdateien können keine Zuordnungen wiederherstellen, die ihrem Format fehlen.
+Before saving, the structure and the computing effort are checked. Limits include 16 floors, 64 rooms per floor, 128 points per room, 64 sensors and 100,000 conservatively estimated grid operations per floor and grid spacing. Additional total and geometry budgets can reject complex plans earlier. A failed import does not replace the last valid plan. Old data rejected while loading stays on disk and is not computed.
 
-Vor dem Speichern werden Struktur und Rechenaufwand geprüft. Grenzen sind unter anderem 16 Etagen, 64 Räume je Etage, 128 Punkte je Raum, 64 Sensoren und 100.000 konservativ geschätzte Rasteroperationen je Etage und Rasterabstand. Zusätzliche Gesamt- und Geometriebudgets können komplexe Pläne früher ablehnen. Fehlerhafte Importe ersetzen den letzten gültigen Plan nicht. Beim Laden abgewiesene Altbestände bleiben auf der Festplatte erhalten und werden nicht berechnet.
+## Model limits
 
-## Modellgrenzen
+- Coverage is a model calculation from field of view, range, height and simplified material damping. It is not a measured detection quality and not a manufacturer guarantee.
+- Reflections, people, pets, furniture and special wall materials can lead to different results in practice.
+- False-trigger risk and the precomputed spill treat open doors as the worst case. The echo cleaning respects assigned contacts; when a view crosses several doors, all of them must be open. Unknown contacts count as open.
+- Openings in freestanding walls are currently not modelled as passages in either core. Normal room doors and windows are supported.
+- The echo cleaning can suppress real simultaneous presence when reports fall inside the echo window. Check hold time, echo window and spill threshold in daily use.
+- Do not base safety-critical alarm, access or emergency functions on the cleaned occupancy alone.
 
-- Abdeckung ist eine Modellrechnung aus Sichtfeld, Reichweite, Höhe und vereinfachter Materialdämpfung. Sie ist keine gemessene Erkennungsqualität und keine Herstellergarantie.
-- Reflexionen, Personen, Haustiere, Möbel und spezielle Wandmaterialien können andere praktische Ergebnisse verursachen.
-- Fehlschalt-Risiko und vorberechneter Spill verwenden offene Türen als Worst Case. Die Echo-Bereinigung beachtet zugeordnete Kontakte; bei mehreren durchquerten Türen müssen alle offen sein. Unbekannte Kontakte gelten als offen.
-- Öffnungen freistehender Wände sind derzeit in beiden Kernen nicht als Durchlass modelliert. Normale Raumtüren und Fenster werden unterstützt.
-- Die Echo-Bereinigung kann echte gleichzeitige Anwesenheit unterdrücken, wenn Meldungen innerhalb des Echo-Fensters liegen. Haltezeit, Echo-Fenster und Spill-Schwelle im Alltag prüfen.
-- Keine sicherheitskritischen Alarm-, Zutritts- oder Notfallfunktionen allein auf die bereinigte Belegung stützen.
+## Privacy
 
-## Datenschutz
+All calculations run locally in Home Assistant and in the browser, with no telemetry and no cloud account. Background images are stored as inline image data; external image URLs are rejected. The plan and the planner's own sensor fields are stored in `<HA config>/.storage/presence_planner` and are therefore part of HA backups. Exports contain private data about your home and your sensors.
 
-Berechnung lokal in HA und im Browser, keine Telemetrie, kein Cloud-Account. Hintergrundbilder werden als Inline-Bilddaten gespeichert; externe Bild-URLs werden abgewiesen. Plan und eigene Sensorfelder liegen in `<HA-Konfiguration>/.storage/presence_planner` und damit auch in HA-Backups. Exporte enthalten private Wohnungs- und Sensordaten.
+The sidebar entry is also visible to logged-in non-admin users. They can read and export the complete plan. There is no additional filtering by HA area or by single entity.
 
-Der Seitenleisteneintrag ist auch für angemeldete Nicht-Admins sichtbar. Diese dürfen den vollständigen Plan lesen und exportieren. Es gibt keine zusätzliche Filterung nach HA-Bereich oder einzelner Entität.
+## Updating and removing
 
-## Aktualisieren und Entfernen
+Create an HA backup before updating. Update in HACS, restart Home Assistant and check the plan source, the sensor spots and the three room entities. After a NeonPlan update, test its connection separately.
 
-Vor Updates ein HA-Backup erstellen. In HACS aktualisieren, HA neu starten und Planquelle, Sensorplätze sowie die drei Raum-Entitäten prüfen. Nach einem NeonPlan-Update dessen Anbindung gesondert testen.
+To remove Presence Planner, first delete the integration under Devices & services, then remove the files through HACS and restart Home Assistant. This does not undo sensor placements in NeonPlan. Remove the optional NeonPlan menu button there yourself if needed. A saved planner file stays as a data source; delete it only on purpose and with a matching backup.
 
-Zum Entfernen zuerst die Integration unter Geräte & Dienste löschen, dann die Dateien über HACS entfernen und HA neu starten. Dies nimmt keine Sensorplatzierungen aus NeonPlan zurück. Den optional angelegten NeonPlan-Menübutton bei Bedarf dort selbst entfernen. Eine gesicherte Planner-Datei bleibt als Datenquelle erhalten; sie nur bewusst mit passendem Backup löschen.
+## Development and checks
 
-## Entwicklung und Prüfungen
-
-Python 3.14.2 oder neuer und Node.js 22 verwenden:
+Use Python 3.14.2 or newer and Node.js 22:
 
 ```sh
 python3 -m venv .venv
@@ -83,10 +81,10 @@ python3 scripts/check_release.py
 git diff --exit-code custom_components/presence_planner/frontend
 ```
 
-Der Bundle-Diff kontrolliert einen bereits eingecheckten Build. HA und Test-Plugin sind kompatibel gepinnt. Der lokale Paketcheck prüft Metadaten, Dokumentation, Icon und ausgelieferte Dateien. Der offizielle HACS-Check läuft erst bei einem öffentlichen Repository; hassfest und lokale Checks laufen auch privat. Es gibt keinen automatischen Veröffentlichungsworkflow.
+The bundle diff checks an already committed build. HA and the test plugin are pinned to compatible versions. The local package check verifies metadata, documentation, icon and shipped files. The official HACS check runs in GitHub Actions together with hassfest. There is no automatic release workflow.
 
-Fehler mit HA-Version, Planquelle, NeonPlan-Version und reproduzierbaren Schritten unter [Issues](https://github.com/DigitalIQ/presence-planner/issues) melden. Für öffentliche Beispiele synthetische Daten verwenden und echte Grundrisse sowie Zugangsdaten vor dem Teilen entfernen.
+Report bugs with your HA version, plan source, NeonPlan version and reproducible steps under [Issues](https://github.com/DigitalIQ/presence-planner/issues). Use synthetic data for public examples, and remove real floor plans and credentials before sharing.
 
-## Lizenz
+## License
 
-MIT. Siehe [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
