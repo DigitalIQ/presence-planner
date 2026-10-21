@@ -10,8 +10,7 @@ from .profiles import ensure_resolved
 def spill_detail(model: Model, sensor: dict, opts: dict | None = None) -> dict:
     """``{foreign_room: {"total", "walls", "doors": {door_id: share}}}`` at 1.3 m, doors open.
 
-    Each seen cell of a foreign room is attributed to the first door opening its ray crosses, or to
-    ``"walls"`` when it crosses none.  Shares are relative to the number of cells of the foreign room.
+    Single-door cells use ``doors``; multi-door cells use ``door_paths`` and require all path doors open.
     """
     o = normalize_opts(opts)
     s = ensure_resolved(sensor)
@@ -29,19 +28,27 @@ def spill_detail(model: Model, sensor: dict, opts: dict | None = None) -> dict:
         total = len(idxs)
         walls = 0
         doors: dict[str, int] = {}
+        paths: dict[tuple[str, ...], int] = {}
         for i in idxs:
             x, z = cells[i][0], cells[i][1]
             if ctx.quality(x, STANDING, z, rc) <= 0:
                 continue
-            did = rc.door_crossed(x, z)
-            if did is None:
+            crossed = rc.doors_crossed(x, z)
+            if not crossed:
                 walls += 1
+            elif len(crossed) > 1:
+                paths[crossed] = paths.get(crossed, 0) + 1
             else:
+                did = crossed[0]
                 doors[did] = doors.get(did, 0) + 1
-        seen = walls + sum(doors.values())
+        seen = walls + sum(doors.values()) + sum(paths.values())
         out[rid] = {
             "total": round(seen / total, 4) if total else 0.0,
             "walls": round(walls / total, 4) if total else 0.0,
             "doors": {k: round(v / total, 4) for k, v in doors.items()},
         }
+        if paths:
+            out[rid]["door_paths"] = [
+                {"doors": list(path), "share": round(count / total, 4)} for path, count in sorted(paths.items())
+            ]
     return out

@@ -81,6 +81,8 @@ test("parity: spill detail", { skip: skipMsg("demo-spill.json") }, () => {
       expectClose(t.total, e.total, SHARE_TOL, `${id} ${rid} total`, bad);
       expectClose(t.walls, e.walls, SHARE_TOL, `${id} ${rid} walls`, bad);
       for (const d of new Set([...Object.keys(e.doors), ...Object.keys(t.doors)])) expectClose(t.doors[d], e.doors[d] ?? 0, SHARE_TOL, `${id} ${rid} door ${d}`, bad);
+      assert.deepEqual((t.door_paths || []).map((p) => p.doors), (e.door_paths || []).map((p) => p.doors));
+      (e.door_paths || []).forEach((p, i) => expectClose(t.door_paths[i].share, p.share, SHARE_TOL, `${id} ${rid} path ${i}`, bad));
     }
   }
   assert.deepEqual(bad.slice(0, 10), [], `${bad.length} values differ`);

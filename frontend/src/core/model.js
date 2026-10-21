@@ -3,6 +3,7 @@
 // an edge without neighbour is an exterior wall drawn fully outside the polygon.
 
 import { dist, inside, insideXZ, orient, rectPoly, segRect } from "./geometry.js";
+import { validatePlan, gridWork, MAX_WEIGHTED_WORK } from "./validation.js";
 
 export const BRICK_DB = 25;
 export const CLOSED_DOOR_DB = 6;
@@ -40,6 +41,7 @@ const keyOf = (s) => {
 };
 
 export function buildModel(plan, floorId) {
+  validatePlan(plan);
   const floor = (plan.floors || []).find((f) => f.id === floorId) || (floorId == null ? (plan.floors || [])[0] : null);
   if (!floor) throw new Error(`floor not found: ${floorId}`);
   const st = plan.settings || {};
@@ -118,6 +120,7 @@ export function buildModel(plan, floorId) {
   const srcById = Object.fromEntries(roomsSrc.map((r) => [r.id, r]));
   const windows = [], doors = [], glass = [];
   for (const o of floor.openings || []) {
+    if (o.wall) continue;
     const r = byId[o.room_id];
     if (!r || !srcById[o.room_id]) continue;
     const P = r.points, a = P[o.edge], b = P[(o.edge + 1) % P.length];
@@ -192,6 +195,7 @@ export function buildModel(plan, floorId) {
 
   // 6. Bounds.
   const pts = [...bands.flat(), ...rooms.flatMap((r) => r.points), ...(floor.outdoor || []).flatMap((o) => o.points || [])];
+  if (!pts.length) pts.push([0, 0]);
   const xs = pts.map((p) => p[0]), zs = pts.map((p) => p[1]);
   const bounds = { x0: Math.min(...xs) - 0.4, x1: Math.max(...xs) + 0.4, z0: Math.min(...zs) - 0.4, z1: Math.max(...zs) + 0.4 };
 
@@ -212,6 +216,9 @@ export function buildModel(plan, floorId) {
  * Centres inside wall bands and free walls are dropped. Coordinates are rounded to 1e-6.
  */
 export function buildCells(model, step) {
+  const work = gridWork(model.rooms, step);
+  const weight = model.rooms.reduce((n, r) => n + r.points.length, 0) + model.bands.length + model.freeWalls.length + 1;
+  if (work * weight > MAX_WEIGHTED_WORK) throw new Error("grid_budget_exceeded");
   const cells = [];
   const blockers = [...model.bands.map((p) => ({ p, b: boxOf(p) })), ...model.freeWalls.map((w) => ({ p: w.poly, b: boxOf(w.poly) }))];
   for (const r of model.rooms) {
@@ -242,9 +249,14 @@ function boxOf(poly) {
 
 /** Cells for a given spacing: the prebuilt lists for 0.1 and 0.2, others are built once and cached. */
 export function cellsFor(model, step) {
+  const work = gridWork(model.rooms, step);
+  const weight = model.rooms.reduce((n, r) => n + r.points.length, 0) + model.bands.length + model.freeWalls.length + 1;
+  if (work * weight > MAX_WEIGHTED_WORK) throw new Error("grid_budget_exceeded");
   const key = String(step);
   if (!model.cells[key]) {
-    Object.defineProperty(model.cells, key, { value: buildCells(model, step), enumerable: false, writable: true, configurable: true });
+    const cells = buildCells(model, step);
+    if (Object.getOwnPropertyNames(model.cells).length >= 8) return cells;
+    Object.defineProperty(model.cells, key, { value: cells, enumerable: false, writable: true, configurable: true });
   }
   return model.cells[key];
 }

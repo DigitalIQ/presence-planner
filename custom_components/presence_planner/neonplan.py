@@ -32,6 +32,7 @@ from .const import (
     NEONPLAN_DOMAIN,
     NEONPLAN_SIGNAL,
 )
+from .validation import bounded_data, validate_plan
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -83,6 +84,7 @@ def _float_or_none(value: Any) -> float | None:
 def building_to_plan(building: dict[str, Any]) -> dict[str, Any]:
     """Turn a NeonPlan building into a pp-plan (version 1). Raises NeonPlanIncompatible on a strange shape."""
     try:
+        bounded_data(building)
         settings = building.get("settings") or {}
         floors = []
         for floor in building["floors"]:
@@ -159,14 +161,14 @@ def building_to_plan(building: dict[str, Any]) -> dict[str, Any]:
                     "background": None,
                 }
             )
-        return {
+        return validate_plan({
             "version": 1,
             "settings": {
                 "wall_exterior": float(settings.get("wall_exterior", 0.24)),
                 "wall_interior": float(settings.get("wall_interior", 0.12)),
             },
             "floors": floors,
-        }
+        })
     except (KeyError, TypeError, ValueError, IndexError, AttributeError) as err:
         raise NeonPlanIncompatible(f"Unexpected NeonPlan building layout: {err!r}") from err
 

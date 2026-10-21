@@ -166,6 +166,9 @@ class RoomFusion:
         for door_id, value in (detail.get("doors") or {}).items():
             if self._door_open(door_id):
                 share += float(value or 0)
+        for path in detail.get("door_paths") or []:
+            if all(self._door_open(door_id) for door_id in path["doors"]):
+                share += float(path["share"])
         return share
 
     def _causes(self, sensor: str) -> list[str]:

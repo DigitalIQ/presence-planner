@@ -13,7 +13,7 @@ A Home Assistant integration (HACS category `integration`, domain `presence_plan
 - entities per room: coverage %, misfire risk %, and a cleaned occupancy binary sensor that drops known cross-room echoes
 - English and German UI (follows `hass.language`)
 
-Minimum Home Assistant: 2026.10. License MIT. No telemetry, no network calls.
+Mindestversion Home Assistant: 2026.10.2. Lizenz MIT. Keine Telemetrie; Berechnung in HA und im Browser. Hintergrundbilder müssen Inline-Bilddaten sein.
 
 ## Repository layout
 
@@ -123,7 +123,7 @@ Per room and per height: `coverage` = mean over cells of the best quality from s
 
 ### Spill detail `spill_detail(model, sensor)`
 
-For each foreign room: `{ "total": share, "walls": share, "doors": { door_id: share } }` – each spill cell is classified by the door opening its ray passes through (or "walls" if none). Used by the cleaned occupancy.
+Je fremdem Raum: `{ "total": share, "walls": share, "doors": { door_id: share }, "door_paths"?: [{"doors": [door_id, ...], "share": share}] }`. Zellen ohne durchquerte Tür zählen unter `walls`, Zellen mit genau einer unter `doors`. Mehrtürpfade stehen disjunkt unter `door_paths`; deren Anteil zählt nur, wenn alle zugeordneten Türkontakte offen sind. IDs und Pfade werden stabil sortiert. Die Summe aller disjunkten Anteile ergibt `total`.
 
 ### Optimizer `optimize(model, room_id, profile, opts, weight)`
 
@@ -135,14 +135,14 @@ The JS core must reproduce the golden results within 2 percentage points for sha
 
 - Config flow, one entry. Options: plan source (`auto` → NeonPlan if loaded, else own plan; `neonplan`; `own`), `thin_db`, `hold_time` (s, default 30), `echo_window` (s, default 5), `spill_threshold` (default 0.05).
 - Store `.storage/presence_planner`: `{ "plan": pp-plan | null, "sensors": { entity_id: {profile, mount, fov_v, ... own fields} }, "own_sensors": [pp-sensor] }`.
-- NeonPlan adapter: reads and writes through NeonPlan's own runtime data object and listens to its change signal (inspect github.com/Mastershort/neonplan3d `storage.py`, `websocket.py`). Version-guarded; if NeonPlan changes its internals, the adapter reports `neonplan_incompatible` and the integration falls back to the own plan instead of crashing.
+- NeonPlan-Adapter: liest und schreibt über das interne Laufzeitobjekt und dessen Signal (`storage.py`, `websocket.py`). Prüft Struktur und aufrufbare Methoden, keine Versionsspanne. Inkompatible Struktur oder unsicherer normalisierter Plan führt zu `neonplan_incompatible` und dem eigenen Plan als Fallback. Schema-Validierung erfolgt, wenn das geladene NeonPlan-Schemamodul verfügbar ist. Planner-Schreiboperationen sind serialisiert; eigene Extras werden erst nach erfolgreichem NeonPlan-Save übernommen. Scheitert danach der eigene Store, wird die vorige NeonPlan-Kopie zurückgeschrieben. Ein gleichzeitiger Ausfall beider Speicherpfade bleibt ein Betriebsfehler, keine zugesicherte verteilte Transaktion.
 - WebSocket commands (all need auth, writes need admin):
   - `presence_planner/get` → `{ source, revision, plan, sensors: [pp-sensor], profiles, options, neonplan: {installed, version, linked} }`
   - `presence_planner/subscribe` → events `{ revision }` on plan or sensor changes
   - `presence_planner/save_sensors` `{ sensors: [pp-sensor] }` → writes NeonPlan fields or own store
   - `presence_planner/save_plan` `{ plan }` → own plan only
-  - `presence_planner/export` → NeonPlan import format (`format: "neonplan-import"`, `rooms_at: "centre"`)
-  - `presence_planner/import` `{ data }` → own plan from NeonPlan import format or a NeonPlan building
+  - `presence_planner/export` → NeonPlan-Austauschformat (`format: "neonplan-import"`, `rooms_at: "centre"`) mit `presence_planner: {version: 1, plan: pp-plan, sensors: [...]}`. Sensoren tragen `floor_index`. Der vollständige native Plan erhält Zuordnungen und Metadaten; NeonPlan ignoriert die Zusatzdaten.
+  - `presence_planner/import` `{ data }` → ersetzt eigenen Plan und Sensorliste gemeinsam, auch eine leere Liste. Akzeptiert native Zusatzdaten, NeonPlan-Austauschdaten oder ein NeonPlan-Building. Ungültige native Sensorbestände werden vollständig abgewiesen.
   - `presence_planner/link_neonplan` → adds a NeonPlan menu button `{id: "presence_planner", label, icon: "radar", action: "navigate", target: "/presence-planner"}`; only on this explicit call
   - `presence_planner/device_profiles` → suggested profile per sensor entity from the device registry
 - Panel: sidebar entry "Presence Planner" at `/presence-planner`, web component `presence-planner-panel`, bundle served from `custom_components/presence_planner/frontend/`.
@@ -169,8 +169,16 @@ Component boundaries:
 ## Tests and CI
 
 - `pytest tests/core` (model, golden generation via `python -m custom_components.presence_planner.core.golden`), `pytest tests/integration` (pytest-homeassistant-custom-component).
-- `node --test frontend/test` (JS core against `shared/golden`).
-- GitHub Actions: HACS validation (`hacs/action@main`, category `integration`), hassfest, pytest, node tests, build check.
+- `npm test` führt `node --test frontend/test/*.test.js` aus; der Dateiaufruf funktioniert auch unter Node 22.
+- GitHub Actions: hassfest, Python 3.14 mit gepinnten kompatiblen HA-/Testabhängigkeiten, Node 22, Bundle-Abgleich und lokale HACS-Paketprüfung. Der offizielle HACS-Check (`hacs/action@main`) läuft nur bei einem öffentlichen Repository; ein privater Stand wird damit nicht als offiziell HACS-validiert ausgegeben.
+
+### Validierungs- und Ressourcenvertrag
+
+Alle Imports werden vor und nach der Formatkonvertierung geprüft. Speichern, Wiederherstellen, NeonPlan-Konvertierung sowie beide Modell- und Rasterkerne erzwingen die gemeinsame Sicherheitsinvariante vor Berechnung oder Persistierung. Ungültige gespeicherte Quellen werden erhalten, aber nicht berechnet. Fehlerhafte Imports ersetzen keinen gültigen Zustand.
+
+Grenzen: 16 Etagen, 64 Räume je Etage, 128 Punkte je Raum, 1.024 Raumpunkte je Etage, je 256 Wände/Öffnungen/Möbel und 64 Sensoren. Geometriekoordinaten müssen endlich und auf ±1.000 m begrenzt sein. Rasterabstände müssen endlich und positiv sein. Pro Etage und Rasterabstand werden höchstens 100.000 konservative Iterationen zugelassen: `sum(nx + nx*nz)` mit den gerundeten Bounding-Box-Ausdehnungen. Dadurch zählen auch leere Außenzeilen. Der gesamte Plan hat ein zusätzliches Budget von 500.000 Standardraster-Operationen und 20 Millionen gewichteten Geometrieprüfungen. Direkte Rasteraufrufe prüfen vor dem Cachezugriff erneut; höchstens acht Raster werden gecacht. Python und JS verwenden dieselben Grenzwerte. Diese Grenzen sind Schutzbudgets, keine Performance-Zusage.
+
+Optimizer-Läufe und Apply werden an die Eingaben und den aktuellen Lauf gebunden. Etagen-, Plan-, Profil- und Live-Türänderungen oder Abbruch verwerfen alte Ergebnisse. Der Host verarbeitet `floor-selected` aus dem Editor und führt die Auswahl aus dem bearbeiteten Plan.
 
 ## Exact core API (Python and JS use the same names in their language style)
 

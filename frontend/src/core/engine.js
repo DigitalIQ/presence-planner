@@ -156,6 +156,11 @@ export function firstDoor(sc, ax, az, bx, bz) {
   return -1;
 }
 
+/** All crossed door indices; callers preserve the complete path for contact filtering. */
+export function crossedDoors(sc, ax, az, bx, bz) {
+  return sc.doorSegs.filter((d) => crossXZ(ax, az, bx, bz, d.ax, d.az, d.bx, d.bz)).map((d) => d.idx);
+}
+
 /* ---------------- single point detection ---------------- */
 
 /** Quality 0..1 of one sensor at point (x, y, z), y = height. */

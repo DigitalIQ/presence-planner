@@ -132,6 +132,7 @@ async def test_deleted_room_loses_its_entities(
     before = {e.unique_id for e in er.async_entries_for_config_entry(registry, config_entry.entry_id)}
     plan = copy.deepcopy(demo_plan)
     removed = plan["floors"][0]["rooms"].pop()
+    plan["floors"][0]["openings"] = [o for o in plan["floors"][0]["openings"] if o.get("room_id") != removed["id"]]
     client = await hass_ws_client(hass)
     msg = await _call(client, type="presence_planner/save_plan", plan=plan)
     assert msg["success"], msg
@@ -154,6 +155,7 @@ async def test_export_and_import_roundtrip(
     msg = await _call(client, type="presence_planner/export")
     assert msg["success"], msg
     data = msg["result"]
+    assert data["presence_planner"]["plan"] == demo_plan
     assert data["format"] == "neonplan-import"
     assert data["rooms_at"] == "centre"
     floor = data["floors"][0]
@@ -173,6 +175,7 @@ async def test_export_and_import_roundtrip(
     msg = await _call(client, type="presence_planner/import", data=data)
     assert msg["success"], msg
     plan = msg["result"]["plan"]
+    assert plan == demo_plan
     imported = plan["floors"][0]
     assert len(imported["rooms"]) == 5
     sensors = msg["result"]["sensors"]

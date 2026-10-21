@@ -1,4 +1,5 @@
 {
   "name": "Presence Planner",
-  "homeassistant": "2026.10.0"
+  "homeassistant": "2026.10.2",
+  "render_readme": true
 }

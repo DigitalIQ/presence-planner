@@ -11,6 +11,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..validation import MAX_WEIGHTED_WORK, PlanValidationError, grid_work, validate_plan
 from .geometry import (
     EPS,
     bbox,
@@ -124,6 +125,7 @@ def _seg_key(a, b):
 
 def build_model(plan: dict, floor_id: str) -> Model:
     """Build the model of one floor of ``plan`` (see "Build step" in ARCHITECTURE.md)."""
+    validate_plan(plan)
     floor = next((f for f in plan.get("floors", []) if f.get("id") == floor_id), None)
     if floor is None:
         raise KeyError(f"floor {floor_id!r} not found in plan")
@@ -465,6 +467,10 @@ def _build_fast(model: Model) -> None:
 
 def get_cells(model: Model, cell: float) -> list:
     """Cells ``[x, z, room_id]`` on a grid of spacing ``cell`` over each room, outside wall bands and free walls."""
+    work = grid_work(model.rooms, cell)
+    weight = sum(len(r["points"]) for r in model.rooms) + len(model.bands) + len(model.free_walls) + 1
+    if work * weight > MAX_WEIGHTED_WORK:
+        raise PlanValidationError("grid_budget_exceeded")
     key = cell_key(cell)
     cached = model.cells.get(key)
     if cached is not None:
@@ -495,7 +501,8 @@ def get_cells(model: Model, cell: float) -> list:
                 if not blocked:
                     cells.append([round(x, 6), round(z, 6), r["id"]])
             i += 1
-    model.cells[key] = cells
+    if len(model.cells) < 8:
+        model.cells[key] = cells
     return cells
 
 

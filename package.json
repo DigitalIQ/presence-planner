@@ -6,13 +6,13 @@
   "scripts": {
     "build": "node frontend/build.mjs",
     "watch": "node frontend/build.mjs --watch",
-    "test": "node --test frontend/test"
+    "test": "node --test frontend/test/*.test.js"
   },
   "dependencies": {
     "lit": "3.2.1",
     "three": "0.170.0"
   },
   "devDependencies": {
-    "esbuild": "0.24.2"
+    "esbuild": "0.28.2"
   }
 }

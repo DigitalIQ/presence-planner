@@ -33,6 +33,7 @@ from .const import (
 from .core import build_model, evaluate, load_profiles, resolve_sensor, spill_detail
 from .devices import is_presence_entity, suggest_profile
 from .neonplan import NeonPlanAdapter, NeonPlanError, NeonPlanIncompatible, placement_to_sensor
+from .validation import PlanValidationError, validate_plan, validate_sensors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,6 +49,8 @@ def compute(plan: dict[str, Any] | None, sensors: list[dict[str, Any]], opts: di
     results: dict[str, Any] = {}
     if not plan:
         return results
+    validate_plan(plan)
+    validate_sensors(sensors, plan)
     for floor in plan.get("floors") or []:
         floor_id = floor["id"]
         floor_sensors = [s for s in sensors if s.get("floor_id") == floor_id and s.get("active", True)]
@@ -81,6 +84,7 @@ class PresencePlannerCoordinator:
         self.revision = 0
         self.room_keys: tuple = ()
         self.reload_task: asyncio.Task | None = None
+        self._write_lock = hass.data.setdefault(f"{DOMAIN}_write_lock", asyncio.Lock())
         self._listeners: list[Callable[[], None]] = []
         self._unsubs: list[Callable[[], None]] = []
         self._debouncer = Debouncer(
@@ -185,8 +189,9 @@ class PresencePlannerCoordinator:
             try:
                 plan = self.adapter.plan()
                 self.plan, self.sensors = plan, self._neonplan_sensors(plan)
+                validate_sensors(self.sensors, self.plan)
                 return
-            except NeonPlanIncompatible as err:
+            except (NeonPlanIncompatible, PlanValidationError) as err:
                 _LOGGER.warning("NeonPlan 3D is not compatible, using the own plan: %s", err)
                 self.neonplan_error = NeonPlanIncompatible.code
                 self.source = SOURCE_OWN
@@ -248,31 +253,53 @@ class PresencePlannerCoordinator:
 
     async def async_save_sensors(self, sensors: list[dict[str, Any]]) -> None:
         """Write sensors: placement fields to NeonPlan and the rest to our store, or all to the own store."""
+        async with self._write_lock:
+            await self._async_save_sensors(sensors)
+
+    async def _async_save_sensors(self, sensors: list[dict[str, Any]]) -> None:
+        """Serialize the two-store operation with the other planner writes."""
+        validate_sensors(sensors, self.plan)
         if self.source == SOURCE_NEONPLAN:
             extras = {
                 s["entity_id"]: {k: v for k, v in s.items() if k not in (*NEONPLAN_OWNED, "entity_id", "floor_id")}
                 for s in sensors
             }
-            await self.store.async_update_extras(extras)
             # NeonPlan's change signal reaches _neonplan_changed as well; the explicit call keeps it synchronous
+            previous_building = copy.deepcopy(self.adapter.building())
             await self.adapter.async_save_sensors(sensors)
+            try:
+                await self.store.async_update_extras(extras)
+            except Exception:
+                # The two stores cannot share a transaction. Restore NeonPlan if our own commit fails.
+                await self.adapter._async_save(previous_building)
+                raise
         else:
             await self.store.async_set_own_sensors(sensors)
         self.async_changed()
 
     async def async_save_plan(self, plan: dict[str, Any]) -> None:
         """Replace the own plan (never touches NeonPlan)."""
-        await self.store.async_set_plan(plan)
-        if self.source == SOURCE_OWN:
-            self.async_changed()
+        async with self._write_lock:
+            validate_plan(plan)
+            await self.store.async_set_plan(plan)
+            if self.source == SOURCE_OWN:
+                self.async_changed()
 
     async def async_import(
+        self, plan: dict[str, Any], building: dict[str, Any] | None, sensors: list[dict[str, Any]] | None = None
+    ) -> list[dict[str, Any]]:
+        """Serialize replacement of the complete own snapshot."""
+        async with self._write_lock:
+            return await self._async_import(plan, building, sensors)
+
+    async def _async_import(
         self, plan: dict[str, Any], building: dict[str, Any] | None, sensors: list[dict[str, Any]] | None = None
     ) -> list[dict[str, Any]]:
         """Store an imported plan as own plan; sensors from a NeonPlan building's placements become own sensors.
 
         `sensors` are the sensors of an own export (already validated, floor ids of `plan`).
         """
+        validate_plan(plan)
         sensors = list(sensors or [])
         if building is not None:
             heights = {f["id"]: float(f.get("height") or 2.5) for f in plan.get("floors") or []}
@@ -286,9 +313,7 @@ class PresencePlannerCoordinator:
                                 floor_id, placement, self.store.extras.get(entity_id), heights.get(floor_id, 2.5)
                             )
                         )
-        await self.store.async_set_plan(plan)
-        if sensors:
-            await self.store.async_set_own_sensors(sensors)
+        await self.store.async_set_snapshot(plan, sensors)
         if self.source == SOURCE_OWN:
             self.async_changed()
         return sensors

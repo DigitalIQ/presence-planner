@@ -124,7 +124,8 @@ def test_spill_detail_total_is_walls_plus_doors(demo):
     model, sensors = demo
     for s in sensors:
         for rid, d in spill_detail(model, s, {"cell": 0.1}).items():
-            assert d["total"] == pytest.approx(d["walls"] + sum(d["doors"].values()), abs=2e-4)
+            paths = sum(p["share"] for p in d.get("door_paths", []))
+            assert d["total"] == pytest.approx(d["walls"] + sum(d["doors"].values()) + paths, abs=2e-4)
             assert rid != OWN[s["entity_id"]]
 
 

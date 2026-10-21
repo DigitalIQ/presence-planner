@@ -26,6 +26,7 @@ const KEY_BY_CODE = {
   not_found: "error.not_found",
   not_supported: "error.not_supported",
   invalid_format: "error.invalid_format",
+  invalid_plan: "error.invalid_format",
   timeout: "error.timeout",
 };
 

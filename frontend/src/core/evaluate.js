@@ -5,7 +5,7 @@
 import { insideXZ, round4 } from "./geometry.js";
 import { cellsFor } from "./model.js";
 import {
-  normOpts, getScene, ensureResolved, sensorState, prepareProbe, runProbe, cellArrays, roomAt, glassScore, firstDoor,
+  normOpts, getScene, ensureResolved, sensorState, prepareProbe, runProbe, cellArrays, roomAt, glassScore, crossedDoors,
 } from "./engine.js";
 
 export const STANDING = 1.3;
@@ -187,22 +187,25 @@ export function spillDetail(model, sensor, opts) {
   const q = runProbe(P, S, new Float64Array(P.n));
   const n = new Array(model.rooms.length).fill(0), walls = new Array(model.rooms.length).fill(0);
   const doors = model.rooms.map(() => ({}));
+  const paths = model.rooms.map(() => new Map());
   for (let c = 0; c < cells.length; c++) n[ca.room[c]]++;
   for (let k = 0; k < P.n; k++) {
     if (!(q[k] > 0)) continue;
     const c = P.ci[k], r = ca.room[c];
-    const di = firstDoor(sc, S.x, S.z, ca.x[c], ca.z[c]);
-    if (di < 0) walls[r]++;
-    else { const id = model.doors[di].id; doors[r][id] = (doors[r][id] || 0) + 1; }
+    const ids = [...new Set(crossedDoors(sc, S.x, S.z, ca.x[c], ca.z[c]).map((i) => model.doors[i].id))].sort();
+    if (!ids.length) walls[r]++;
+    else if (ids.length === 1) { const id = ids[0]; doors[r][id] = (doors[r][id] || 0) + 1; }
+    else { const key = JSON.stringify(ids); paths[r].set(key, (paths[r].get(key) || 0) + 1); }
   }
   const out = {};
   model.rooms.forEach((r, ri) => {
     if (ri === homeIdx) return;
     const total = n[ri];
-    const seen = walls[ri] + Object.values(doors[ri]).reduce((a, b) => a + b, 0);
+    const seen = walls[ri] + Object.values(doors[ri]).reduce((a, b) => a + b, 0) + [...paths[ri].values()].reduce((a, b) => a + b, 0);
     const dd = {};
     for (const [id, v] of Object.entries(doors[ri])) dd[id] = round4(v / total);
     out[r.id] = { total: total ? round4(seen / total) : 0, walls: total ? round4(walls[ri] / total) : 0, doors: dd };
+    if (paths[ri].size) out[r.id].door_paths = [...paths[ri]].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([ids, count]) => ({ doors: JSON.parse(ids), share: round4(count / total) }));
   });
   return out;
 }

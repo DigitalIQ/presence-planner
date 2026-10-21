@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import copy
+import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .const import STORAGE_KEY, STORAGE_VERSION
+from .validation import PlanValidationError, validate_plan, validate_sensors
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def empty_data() -> dict[str, Any]:
@@ -30,11 +34,18 @@ class PresencePlannerStore:
         data = empty_data()
         if isinstance(stored, dict):
             if isinstance(stored.get("plan"), dict):
-                data["plan"] = stored["plan"]
+                try:
+                    data["plan"] = validate_plan(stored["plan"])
+                except PlanValidationError as err:
+                    _LOGGER.error("Stored Presence Planner plan rejected: %s; saved source retained", err)
             if isinstance(stored.get("sensors"), dict):
                 data["sensors"] = stored["sensors"]
             if isinstance(stored.get("own_sensors"), list):
-                data["own_sensors"] = stored["own_sensors"]
+                try:
+                    validate_sensors(stored["own_sensors"], data["plan"])
+                    data["own_sensors"] = stored["own_sensors"]
+                except PlanValidationError as err:
+                    _LOGGER.error("Stored Presence Planner sensors rejected: %s; saved source retained", err)
         self.data = data
 
     async def async_save(self) -> None:
@@ -58,16 +69,30 @@ class PresencePlannerStore:
 
     async def async_set_plan(self, plan: dict[str, Any] | None) -> None:
         """Replace the own plan."""
-        self.data["plan"] = copy.deepcopy(plan)
-        await self.async_save()
+        if plan is not None:
+            validate_plan(plan)
+            validate_sensors(self.own_sensors, plan)
+        await self._commit({**self.data, "plan": copy.deepcopy(plan)})
+
+    async def _commit(self, data: dict[str, Any]) -> None:
+        """Publish an in-memory snapshot only after the durable save succeeds."""
+        await self._store.async_save(copy.deepcopy(data))
+        self.data = data
+
+    async def async_set_snapshot(self, plan: dict[str, Any], sensors: list[dict[str, Any]]) -> None:
+        """Replace the complete own plan, including an explicitly empty sensor list."""
+        validate_plan(plan)
+        validate_sensors(sensors, plan)
+        await self._commit({**self.data, "plan": copy.deepcopy(plan), "own_sensors": copy.deepcopy(sensors)})
 
     async def async_set_own_sensors(self, sensors: list[dict[str, Any]]) -> None:
         """Replace the own sensor list."""
-        self.data["own_sensors"] = copy.deepcopy(sensors)
-        await self.async_save()
+        validate_sensors(sensors, self.plan)
+        await self._commit({**self.data, "own_sensors": copy.deepcopy(sensors)})
 
     async def async_update_extras(self, extras: dict[str, dict[str, Any]]) -> None:
         """Merge extra fields per entity."""
+        data = copy.deepcopy(self.data)
         for entity_id, fields in extras.items():
-            self.data["sensors"][entity_id] = {**self.data["sensors"].get(entity_id, {}), **copy.deepcopy(fields)}
-        await self.async_save()
+            data["sensors"][entity_id] = {**data["sensors"].get(entity_id, {}), **copy.deepcopy(fields)}
+        await self._commit(data)

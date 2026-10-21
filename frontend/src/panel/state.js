@@ -142,7 +142,7 @@ export function onRemoteRevision(state, revision) {
   return { state, reload: true };
 }
 
-export const floorOf = (state) => ((state.plan && state.plan.floors) || []).find((f) => f.id === state.floorId) || null;
+export const floorOf = (state) => ((state.editPlan && state.editPlan.floors) || []).find((f) => f.id === state.floorId) || null;
 export const sensorsOnFloor = (state) => state.sensors.filter((s) => s.floor_id === state.floorId);
 export const getSensor = (state, entityId) => state.sensors.find((s) => s.entity_id === entityId) || null;
 
@@ -221,8 +221,11 @@ export function removeSensor(state, entityId) {
 /** Back to the last loaded or saved state. */
 export function resetChanges(state) {
   const sensors = clone(state.savedSensors);
-  const selected = sensors.some((s) => s.entity_id === state.selected) ? state.selected : null;
-  return { ...state, sensors, editPlan: clone(state.plan), dirty: false, planDirty: false, selected };
+  const editPlan = clone(state.plan);
+  const floors = editPlan?.floors || [];
+  const floorId = floors.some((f) => f.id === state.floorId) ? state.floorId : floors[0]?.id || null;
+  const selected = sensors.some((s) => s.entity_id === state.selected && s.floor_id === floorId) ? state.selected : null;
+  return { ...state, sensors, floorId, editPlan, dirty: false, planDirty: false, selected };
 }
 
 export function setEditPlan(state, plan) {
@@ -254,7 +257,8 @@ export function doorsOption(mode, floor, states) {
   for (const o of (floor && floor.openings) || []) {
     if (o.type === "window") continue;
     const st = o.contact && states ? states[o.contact] : null;
-    out[o.id] = st && st.state === "off" ? false : true;
+    const known = st && (st.state === "on" || st.state === "off");
+    out[o.id] = known ? ((st.state === "on") !== !!o.contact_invert) : true;
   }
   return out;
 }
@@ -306,8 +310,18 @@ export function cycleSelection(state, dir = 1) {
 
 /** Applies an optimizer candidate to a sensor (position, height, direction, tilt, mount). */
 export function applyCandidate(state, entityId, cand) {
-  if (!cand) return state;
+  if (!cand || !sensorsOnFloor(state).some((s) => s.entity_id === entityId)) return state;
   return updateSensor(state, entityId, { x: cand.x, z: cand.z, height: cand.height, phi: cand.phi, tilt: cand.tilt, mount: cand.mount || "wall" });
+}
+
+/** Identity of the calculation inputs. A result is applicable only to this exact context. */
+export const optimizerContext = (s) => [s.editPlan, s.floorId, s.revision, s.sensors, s.profiles, s.thinDb, s.doorsMode, s.weight];
+export const sameOptimizerContext = (a, b) => !!a && !!b && a.length === b.length && a.every((v, i) => v === b[i]);
+
+export function selectFloor(state, floorId) {
+  if (!(state.editPlan?.floors || []).some((f) => f.id === floorId)) return state;
+  const selected = state.sensors.find((s) => s.floor_id === floorId)?.entity_id || null;
+  return { ...state, floorId, selected };
 }
 
 /** Stable colour slot per sensor: index in the full sensor list. */

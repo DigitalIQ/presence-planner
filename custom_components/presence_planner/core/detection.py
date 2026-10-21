@@ -249,8 +249,9 @@ class RayCaster:
                     total += OBSTACLE_DB
         return total
 
-    def door_crossed(self, px: float, pz: float):
-        """Id of the first door segment the plan projection of the ray crosses, or ``None``."""
+    def doors_crossed(self, px: float, pz: float) -> tuple[str, ...]:
+        """All crossed doors, in stable ID order independent of plan ordering."""
+        crossed = set()
         sx, sz = self.sx, self.sz
         rx = px - sx
         rz = pz - sz
@@ -261,8 +262,12 @@ class RayCaster:
                 continue
             if ((rx * (az - sz) - rz * (ax - sx)) >= 0.0) == ((rx * (bz - sz) - rz * (bx - sx)) >= 0.0):
                 continue
-            return did
-        return None
+            crossed.add(did)
+        return tuple(sorted(crossed))
+
+    def door_crossed(self, px: float, pz: float):
+        """Compatibility accessor for callers interested in a single crossed door."""
+        return next(iter(self.doors_crossed(px, pz)), None)
 
 
 def _contains(hp, px: float, pz: float) -> bool:

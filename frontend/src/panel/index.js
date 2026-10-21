@@ -92,6 +92,7 @@ export class PresencePlannerPanel extends LitElement {
         const sig = this._contactSignature();
         if (sig !== this._contactSig) {
           this._contactSig = sig;
+          this._invalidateOptimizer();
           this._scheduleEval(false);
         }
       }
@@ -179,6 +180,10 @@ export class PresencePlannerPanel extends LitElement {
 
   _setState(next, { fast = false } = {}) {
     const prev = this._s;
+    if (!S.sameOptimizerContext(S.optimizerContext(prev), S.optimizerContext(next))) {
+      this._invalidateOptimizer();
+      if (next.floorId !== prev.floorId || next.editPlan !== prev.editPlan) this._opt = { ...this._opt, roomId: null, target: null };
+    }
     this._s = next;
     if (next.editPlan !== prev.editPlan || next.floorId !== prev.floorId || !this._model) this._rebuildModel();
     if (next.profiles !== prev.profiles) this._profilesDict = null;
@@ -390,7 +395,7 @@ export class PresencePlannerPanel extends LitElement {
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "presence-planner-neonplan-import.json";
+      a.download = "presence-planner-backup.json";
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -445,7 +450,15 @@ export class PresencePlannerPanel extends LitElement {
   /* ---------- optimizer ---------- */
 
   setOpt(patch) {
+    if (("profileId" in patch && patch.profileId !== this._opt.profileId) || ("roomId" in patch && patch.roomId !== this._opt.roomId)) this._invalidateOptimizer();
     this._opt = { ...this._opt, ...patch };
+  }
+
+  _invalidateOptimizer() {
+    this._runner.cancel();
+    this._optRun = null;
+    this._optContext = null;
+    this._opt = { ...this._opt, running: false, results: null, progress: 0 };
   }
 
   optimizerRoom() {
@@ -465,7 +478,7 @@ export class PresencePlannerPanel extends LitElement {
   optimizerTarget(roomId) {
     if (this._opt.target && this._opt.scope !== "all") {
       if (this._opt.target === "-") return null;
-      if (S.getSensor(this._s, this._opt.target)) return this._opt.target;
+      if (S.sensorsOnFloor(this._s).some((s) => s.entity_id === this._opt.target)) return this._opt.target;
     }
     return S.optimizerTarget(this._s, roomId, (s) => this.roomOf(s));
   }
@@ -475,25 +488,30 @@ export class PresencePlannerPanel extends LitElement {
     const roomIds = all ? (this._model.rooms || []).map((r) => r.id) : [this.optimizerRoom()].filter(Boolean);
     if (!roomIds.length) return;
     const opts = { ...S.coreOptions(this._s, this.hass && this.hass.states, { grid: false }), cell: OPTIMIZER_CELL };
+    const context = S.optimizerContext(this._s);
+    const run = Symbol("optimizer run");
+    this._optRun = run;
+    this._optContext = context;
     this.setOpt({ running: true, progress: 0, results: null, error: null, scope: all ? "all" : "room", currentRoom: roomIds[0] });
     try {
       const results = await this._runner.run(
         { plan: this._s.editPlan, floorId: this._s.floorId, roomIds, profileId: this.optimizerProfile(), opts, weight: this._s.weight, profiles: this.profiles },
-        (p, roomId) => this.setOpt({ progress: p, currentRoom: roomId }),
+        (p, roomId) => { if (this._optRun === run && S.sameOptimizerContext(context, S.optimizerContext(this._s))) this.setOpt({ progress: p, currentRoom: roomId }); },
       );
+      if (this._optRun !== run || !S.sameOptimizerContext(context, S.optimizerContext(this._s))) return;
       this.setOpt({ running: false, results, progress: 1 });
     } catch (e) {
+      if (this._optRun !== run || !S.sameOptimizerContext(context, S.optimizerContext(this._s))) return;
       this.setOpt({ running: false, error: e.message || String(e) });
     }
   }
 
   cancelOptimizer() {
-    this._runner.cancel();
-    this.setOpt({ running: false, progress: 0 });
+    this._invalidateOptimizer();
   }
 
   applyCandidate(entityId, cand) {
-    if (!entityId) return;
+    if (!entityId || !S.sameOptimizerContext(this._optContext, S.optimizerContext(this._s))) return;
     this._setState({ ...S.applyCandidate(this._s, entityId, cand), selected: entityId });
   }
 
@@ -503,7 +521,7 @@ export class PresencePlannerPanel extends LitElement {
     const t = this.t;
     const st = this._s;
     if (!this.hass) return html``;
-    const floors = (st.plan && st.plan.floors) || [];
+    const floors = (st.editPlan && st.editPlan.floors) || [];
     const dirty = st.dirty || st.planDirty;
     return html`<div class="app">
       ${this._renderTop(floors, dirty)}
@@ -613,7 +631,8 @@ export class PresencePlannerPanel extends LitElement {
     return html`<section id="tp-editor" role="tabpanel" aria-labelledby="tab-editor" class="editor">
       <pp-editor .plan=${this._s.editPlan} .floorId=${this._s.floorId} .hass=${this.hass} .dark=${!!this._dark}
         .lang=${this.hass?.language || "en"} .areas=${reg.areaList} .floors=${reg.floorList}
-        @plan-changed=${(e) => this._onPlanChanged(e)}></pp-editor>
+        @plan-changed=${(e) => this._onPlanChanged(e)}
+        @floor-selected=${(e) => this._onFloorSelected(e)}></pp-editor>
     </section>`;
   }
 
@@ -625,6 +644,10 @@ export class PresencePlannerPanel extends LitElement {
     if (d && d.floorId) floorId = d.floorId;
     if (!plan.floors.some((f) => f.id === floorId)) floorId = plan.floors[0] ? plan.floors[0].id : null;
     this._setState({ ...S.setEditPlan(this._s, plan), floorId });
+  }
+
+  _onFloorSelected(e) {
+    this._setState(S.selectFloor(this._s, e.detail.floorId));
   }
 
   _renderPlanner() {

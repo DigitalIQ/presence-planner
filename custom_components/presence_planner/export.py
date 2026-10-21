@@ -6,11 +6,13 @@ rooms as outlines, doors and windows by their middle point (`at`) on a room edge
 
 from __future__ import annotations
 
+import copy
 import math
 import re
 from typing import Any
 
 from .neonplan import NeonPlanIncompatible, building_to_plan
+from .validation import PlanValidationError, bounded_data, validate_plan
 
 IMPORT_FORMAT = "neonplan-import"
 # a door or window `at` point counts as lying on an edge within this distance (m)
@@ -260,7 +262,7 @@ def from_neonplan_import(data: dict[str, Any]) -> tuple[dict[str, Any], list[str
     return {"version": 1, "settings": {"wall_exterior": 0.24, "wall_interior": 0.12}, "floors": floors}, warnings
 
 
-def import_data(data: dict[str, Any]) -> tuple[dict[str, Any], list[str], dict[str, Any] | None]:
+def _import_data(data: dict[str, Any]) -> tuple[dict[str, Any], list[str], dict[str, Any] | None]:
     """Own plan from the NeonPlan import format, a NeonPlan building (or backup / get result) or a pp-plan.
 
     Returns (plan, warnings, building) where building is the NeonPlan building when one was given (so its
@@ -268,6 +270,12 @@ def import_data(data: dict[str, Any]) -> tuple[dict[str, Any], list[str], dict[s
     """
     if not isinstance(data, dict):
         raise ImportFormatError("not_an_object")
+    bounded_data(data)
+    native = data.get("presence_planner")
+    if isinstance(native, dict) and "plan" in native:
+        if native.get("version") != 1 or not isinstance(native["plan"], dict):
+            raise ImportFormatError("invalid_native_export")
+        return copy.deepcopy(native["plan"]), [], None
     if data.get("format") == IMPORT_FORMAT:
         plan, warnings = from_neonplan_import(data)
         return plan, warnings, None
@@ -284,3 +292,13 @@ def import_data(data: dict[str, Any]) -> tuple[dict[str, Any], list[str], dict[s
         plan, warnings = from_neonplan_import(data)
         return plan, warnings, None
     raise ImportFormatError("unknown_format")
+
+
+def import_data(data: dict[str, Any]) -> tuple[dict[str, Any], list[str], dict[str, Any] | None]:
+    """Validate every supported representation before returning a normalized plan."""
+    try:
+        plan, warnings, building = _import_data(data)
+        validate_plan(plan)
+        return plan, warnings, building
+    except (PlanValidationError, TypeError, AttributeError, OverflowError, KeyError, IndexError) as err:
+        raise ImportFormatError(str(err)) from err

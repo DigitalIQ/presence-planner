@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
@@ -14,6 +15,7 @@ from .const import DOMAIN, SIGNAL_UPDATED, SOURCE_OWN
 from .devices import device_profiles
 from .export import ImportFormatError, import_data, to_neonplan_import
 from .neonplan import NeonPlanError
+from .validation import PlanValidationError, validate_plan
 
 if TYPE_CHECKING:
     from .coordinator import PresencePlannerCoordinator
@@ -146,6 +148,9 @@ async def ws_save_sensors(hass: HomeAssistant, connection: websocket_api.ActiveC
         return
     try:
         await coordinator.async_save_sensors(msg["sensors"])
+    except PlanValidationError as err:
+        connection.send_error(msg["id"], "invalid_plan", str(err))
+        return
     except NeonPlanError as err:
         connection.send_error(msg["id"], err.code, str(err))
         return
@@ -164,7 +169,11 @@ async def ws_save_plan(hass: HomeAssistant, connection: websocket_api.ActiveConn
     """Replace the own plan."""
     if (coordinator := _coordinator(hass, connection, msg)) is None:
         return
-    await coordinator.async_save_plan(msg["plan"])
+    try:
+        await coordinator.async_save_plan(msg["plan"])
+    except PlanValidationError as err:
+        connection.send_error(msg["id"], "invalid_plan", str(err))
+        return
     connection.send_result(msg["id"], {"revision": await _after_write(hass, coordinator)})
 
 
@@ -178,7 +187,12 @@ async def ws_export(hass: HomeAssistant, connection: websocket_api.ActiveConnect
     if not plan:
         connection.send_error(msg["id"], "no_plan", "There is no plan to export")
         return
-    data = to_neonplan_import(plan)
+    try:
+        validate_plan(plan)
+        data = to_neonplan_import(plan)
+    except PlanValidationError as err:
+        connection.send_error(msg["id"], "invalid_plan", str(err))
+        return
     # The import format has no sensors. They travel in an extra key that NeonPlan ignores, keyed by floor index
     # because the import format carries no floor ids.
     floor_index = {f["id"]: i for i, f in enumerate(plan.get("floors") or [])}
@@ -188,28 +202,28 @@ async def ws_export(hass: HomeAssistant, connection: websocket_api.ActiveConnect
         for s in raw
         if s.get("floor_id") in floor_index
     ]
-    if sensors:
-        data[EXPORT_SENSORS_KEY] = {"version": 1, "sensors": sensors}
+    data[EXPORT_SENSORS_KEY] = {"version": 1, "plan": copy.deepcopy(plan), "sensors": sensors}
     connection.send_result(msg["id"], data)
 
 
 def _exported_sensors(data: dict[str, Any], plan: dict[str, Any], warnings: list[str]) -> list[dict[str, Any]]:
     """Sensors from the extra key of an own export, with floor ids of the imported plan."""
     extra = data.get(EXPORT_SENSORS_KEY)
-    if not isinstance(extra, dict) or not isinstance(extra.get("sensors"), list):
+    if extra is None:
         return []
+    if not isinstance(extra, dict) or extra.get("version") != 1 or not isinstance(extra.get("sensors"), list):
+        raise ImportFormatError("invalid_exported_sensors")
     floors = plan.get("floors") or []
     sensors = []
     for item in extra["sensors"]:
         index = item.get("floor_index") if isinstance(item, dict) else None
         if not isinstance(index, int) or not 0 <= index < len(floors):
-            warnings.append("sensor_floor_missing")
-            continue
+            raise ImportFormatError("sensor_floor_missing")
         record = {k: v for k, v in item.items() if k != "floor_index"}
         try:
             sensors.append(SENSOR_SCHEMA({**record, "floor_id": floors[index]["id"]}))
         except vol.Invalid:
-            warnings.append(f"sensor_invalid:{record.get('entity_id')}")
+            raise ImportFormatError(f"sensor_invalid:{record.get('entity_id')}") from None
     return sensors
 
 
@@ -222,11 +236,16 @@ async def ws_import(hass: HomeAssistant, connection: websocket_api.ActiveConnect
         return
     try:
         plan, warnings, building = import_data(msg["data"])
-    except ImportFormatError as err:
+        validate_plan(plan)
+    except (ImportFormatError, PlanValidationError, TypeError, AttributeError, OverflowError) as err:
         connection.send_error(msg["id"], "invalid_format", str(err))
         return
-    exported = _exported_sensors(msg["data"], plan, warnings) if building is None else []
-    sensors = await coordinator.async_import(plan, building, exported)
+    try:
+        exported = _exported_sensors(msg["data"], plan, warnings) if building is None else []
+        sensors = await coordinator.async_import(plan, building, exported)
+    except (PlanValidationError, ImportFormatError) as err:
+        connection.send_error(msg["id"], "invalid_format", str(err))
+        return
     await _after_write(hass, coordinator)
     connection.send_result(msg["id"], {"plan": plan, "sensors": sensors, "warnings": warnings})
 
