@@ -1,0 +1,49 @@
+name: Bug report
+description: Something in Presence Planner does not work as described.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please use synthetic data in public examples and remove real floor plans, names and addresses.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the panel
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: pp_version
+    attributes:
+      label: Presence Planner version
+      placeholder: "0.2.1"
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.10.3"
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: "Safari 26 on iPhone, Chrome 141 on Windows"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: Settings → System → Logs, filtered for presence_planner. Browser console errors help with panel problems.
+      render: text

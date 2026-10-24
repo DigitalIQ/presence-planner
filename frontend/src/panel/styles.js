@@ -50,6 +50,8 @@ export const panelStyles = css`
   button:hover:not(:disabled) { border-color: var(--pp-accent); }
   button.primary, button[aria-pressed="true"], button.on { background: var(--pp-accent); border-color: var(--pp-accent); color: var(--pp-on-accent); }
   button:disabled { opacity: 0.5; cursor: default; }
+  a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+  .help { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; padding-top: 8px; border-top: 1px solid var(--pp-line); }
   button.link { border: none; padding: 2px 4px; color: var(--pp-accent); min-height: 0; }
   button:focus-visible, select:focus-visible, input:focus-visible, [role="tab"]:focus-visible, summary:focus-visible {
     outline: 2px solid var(--pp-accent); outline-offset: 2px;

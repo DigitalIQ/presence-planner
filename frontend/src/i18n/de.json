@@ -165,5 +165,10 @@
   "view3d.walls_ghost": "durchsichtig",
   "view3d.walls_hidden": "aus",
 
-  "room.outside": "außerhalb"
+  "room.outside": "außerhalb",
+  "help.label": "Feedback und Hilfe",
+  "help.bug": "Fehler melden",
+  "help.idea": "Idee vorschlagen",
+  "help.question": "Frage stellen",
+  "help.manual": "Anleitung"
 }

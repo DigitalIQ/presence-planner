@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Idea or feature wish
+    url: https://github.com/DigitalIQ/presence-planner/discussions/categories/ideas
+    about: Share ideas in Discussions and upvote the ones you want most. Issues are for bugs.
+  - name: Question or help
+    url: https://github.com/DigitalIQ/presence-planner/discussions/categories/q-a
+    about: How do I …? Ask in Discussions.
+  - name: Manual
+    url: https://github.com/DigitalIQ/presence-planner#readme
+    about: Installation, setup, import and the limits of the model.

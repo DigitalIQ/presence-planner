@@ -15,6 +15,7 @@ import { sensorColors, PALETTE } from "./colors.js";
 import { OptimizerRunner, workerUrl } from "./optimizer.js";
 import { panelStyles } from "./styles.js";
 import { renderSensors, renderResults, renderOptimizer, renderAssumptions } from "./side.js";
+import { HELP_LINKS } from "./links.js";
 
 const OPTIMIZER_CELL = 0.2;
 
@@ -516,7 +517,16 @@ export class PresencePlannerPanel extends LitElement {
         : nothing}
       ${!this.isAdmin ? html`<div class="banner" role="note"><span>${t("banner.read_only")}</span></div>` : nothing}
       ${st.loading && !st.plan ? html`<div class="empty">${t("status.loading")}</div>` : st.error && !st.plan ? this._renderError() : !st.plan ? this._renderNoPlan() : this._renderBody()}
+      ${this._renderHelp()}
     </div>`;
+  }
+
+  _renderHelp() {
+    const t = this.t;
+    return html`<footer class="help" aria-label=${t("help.label")}>
+      <span class="muted">${t("help.label")}</span>
+      ${HELP_LINKS.map((l) => html`<a class="btn" href=${l.href} target="_blank" rel="noopener noreferrer">${t(l.key)}</a>`)}
+    </footer>`;
   }
 
   _renderTop(floors, dirty) {
