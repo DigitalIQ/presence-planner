@@ -28,14 +28,18 @@ More images in [docs/images](docs/images): the 3D light mode, the best-spot sugg
 
 ## Installation
 
-1. In HACS, open the menu "Custom repositories" and add the URL `https://github.com/DigitalIQ/presence-planner` with the category **Integration**.
-2. Download Presence Planner and restart Home Assistant.
+Presence Planner is in the HACS default list.
+
+[![Open Presence Planner in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=DigitalIQ&repository=presence-planner&category=integration)
+
+1. In HACS, search for **Presence Planner** and download it. The button above opens the page directly.
+2. Restart Home Assistant.
 3. Under **Settings → Devices & services → Add integration**, search for **Presence Planner** and confirm.
 4. Open the **Presence Planner** entry in the sidebar.
 
-Alternatively, copy the complete folder `custom_components/presence_planner` to `<HA config>/custom_components/presence_planner`, restart and add the integration. The frontend bundles are included; Home Assistant does not need Node.js.
+If HACS does not find it yet, add it as a custom repository instead: in HACS, open the menu "Custom repositories" and add the URL `https://github.com/DigitalIQ/presence-planner` with the category **Integration**. Then continue with step 2.
 
-Inclusion in the HACS default list is a separate step ([hacs/default#12395](https://github.com/hacs/default/pull/12395)). Until it is merged, install Presence Planner as a custom repository.
+Without HACS, copy the complete folder `custom_components/presence_planner` to `<HA config>/custom_components/presence_planner`, restart and add the integration. The frontend bundles are included; Home Assistant does not need Node.js.
 
 ## Setup
 
