@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
-from .const import SENSOR_DEVICE_CLASSES
+from .const import DOMAIN, SENSOR_DEVICE_CLASSES
 
 
 def device_text(hass: HomeAssistant, entity_id: str) -> str:
@@ -54,8 +54,14 @@ def entity_device_class(hass: HomeAssistant, entity_id: str) -> str | None:
 
 
 def is_presence_entity(hass: HomeAssistant, entity_id: str) -> bool:
-    """A binary_sensor with device class occupancy, presence or motion."""
-    return entity_id.startswith("binary_sensor.") and entity_device_class(hass, entity_id) in SENSOR_DEVICE_CLASSES
+    """A binary_sensor with device class occupancy, presence or motion, not one of our own occupancy entities.
+
+    Our cleaned occupancy is an output; used as an input sensor it would feed the planner its own results.
+    """
+    if not entity_id.startswith("binary_sensor.") or entity_device_class(hass, entity_id) not in SENSOR_DEVICE_CLASSES:
+        return False
+    entry = er.async_get(hass).async_get(entity_id)
+    return entry is None or entry.platform != DOMAIN
 
 
 def presence_entities(hass: HomeAssistant) -> list[str]:

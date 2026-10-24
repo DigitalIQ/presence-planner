@@ -214,6 +214,26 @@ async def test_import_neonplan_building(
     assert len(er.async_entries_for_config_entry(er.async_get(hass), config_entry.entry_id)) == 15
 
 
+async def test_import_skips_own_occupancy_entities(
+    hass: HomeAssistant, hass_ws_client, config_entry: MockConfigEntry, demo_plan, demo_sensors
+) -> None:
+    """Our own occupancy entities placed in NeonPlan never become input sensors."""
+    for sensor in demo_sensors:
+        hass.states.async_set(sensor["entity_id"], "off", {"device_class": "presence"})
+    own = er.async_get(hass).async_get_or_create(
+        "binary_sensor", DOMAIN, "own_occupancy", suggested_object_id="flat_bath_occupancy"
+    )
+    hass.states.async_set(own.entity_id, "off", {"device_class": "occupancy"})
+    building = demo_building(demo_plan, demo_sensors)
+    building["floors"][0]["placements"].append({"entity_id": own.entity_id, "x": 1.0, "z": 1.0, "y": 2.0})
+    await _setup(hass, config_entry)
+    client = await hass_ws_client(hass)
+    msg = await _call(client, type="presence_planner/import", data={"building": building})
+    assert msg["success"], msg
+    assert own.entity_id not in {s["entity_id"] for s in msg["result"]["sensors"]}
+    assert len(msg["result"]["sensors"]) == len(demo_sensors)
+
+
 async def test_import_invalid(hass: HomeAssistant, hass_ws_client, config_entry: MockConfigEntry) -> None:
     """Unknown data is refused."""
     await _setup(hass, config_entry)
