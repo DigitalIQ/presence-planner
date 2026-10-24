@@ -27,7 +27,6 @@ test("every command uses the presence_planner prefix and payload", async () => {
   await c.savePlan({ version: 1, floors: [] });
   await c.exportPlan();
   await c.importPlan({ format: "neonplan-import" });
-  await c.linkNeonplan();
   await c.deviceProfiles();
   assert.deepEqual(conn.sent.map((m) => m.type), [
     "presence_planner/get",
@@ -35,7 +34,6 @@ test("every command uses the presence_planner prefix and payload", async () => {
     "presence_planner/save_plan",
     "presence_planner/export",
     "presence_planner/import",
-    "presence_planner/link_neonplan",
     "presence_planner/device_profiles",
   ]);
   assert.deepEqual(conn.sent[1].sensors, [{ entity_id: "binary_sensor.a" }]);
@@ -57,9 +55,8 @@ test("subscribe delivers revision events and returns the unsubscribe function", 
 test("errors are mapped to codes and i18n keys", async () => {
   const c = new PlannerClient(fakeConnection(() => { throw { code: "unauthorized", message: "Unauthorized" }; }));
   await assert.rejects(c.saveSensors([]), (e) => e instanceof PlannerError && e.code === "unauthorized" && e.i18nKey === "error.unauthorized");
-  const c2 = new PlannerClient(fakeConnection(() => { throw { code: "neonplan_incompatible", message: "x" }; }));
-  await assert.rejects(c2.get(), (e) => e.i18nKey === "error.neonplan_incompatible");
-  assert.equal(mapError({ code: "home_assistant_error", message: "neonplan_incompatible: storage v9" }).code, "neonplan_incompatible");
+  const c2 = new PlannerClient(fakeConnection(() => { throw { code: "invalid_format", message: "x" }; }));
+  await assert.rejects(c2.importPlan({}), (e) => e.i18nKey === "error.invalid_format");
   assert.equal(mapError({ code: "unknown_command", message: "Unknown command." }).i18nKey, "error.not_loaded");
   assert.equal(mapError(new Error("boom")).i18nKey, "error.generic");
 });
@@ -72,7 +69,7 @@ test("device profile suggestions are normalised", () => {
 });
 
 test("backend error codes map to their own messages", () => {
-  for (const code of ["not_loaded", "neonplan_rejected", "neonplan_unavailable", "no_plan", "invalid_format"]) {
+  for (const code of ["not_loaded", "no_plan", "invalid_format", "invalid_plan", "timeout"]) {
     assert.notEqual(mapError({ code, message: "x" }).i18nKey, "error.generic", code);
   }
   assert.deepEqual(normaliseDeviceProfiles({ suggestions: { "binary_sensor.a": { profile: "aqara_fp300", device: "Aqara FP300" } } }), { "binary_sensor.a": "aqara_fp300" });

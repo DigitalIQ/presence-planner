@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .conftest import DOMAIN, FakeNeonPlanData, demo_building
@@ -24,8 +25,10 @@ async def _setup(hass: HomeAssistant, entry: MockConfigEntry) -> None:
 
 @pytest.fixture
 def auto_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """An entry with plan source auto."""
-    entry = MockConfigEntry(domain=DOMAIN, title="Presence Planner", data={}, options=OPTIONS, unique_id=DOMAIN)
+    """An entry from 0.1.x with plan source auto (config entry 1.1)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, title="Presence Planner", data={}, options=OPTIONS, unique_id=DOMAIN, version=1, minor_version=1
+    )
     entry.add_to_hass(hass)
     return entry
 
@@ -42,15 +45,13 @@ async def test_get_own(hass: HomeAssistant, hass_ws_client, config_entry: MockCo
     msg = await _call(client, type="presence_planner/get")
     assert msg["success"], msg
     result = msg["result"]
-    assert result["source"] == "own"
+    assert "source" not in result and "neonplan" not in result
     assert isinstance(result["revision"], int)
     assert [f["id"] for f in result["plan"]["floors"]] == ["demo"]
     assert len(result["sensors"]) == 5
     assert all(s["fov_v"] is not None for s in result["sensors"])
     assert any(p["id"] == "aqara_fp300" for p in result["profiles"]["profiles"])
     assert result["options"]["hold_time"] == 30
-    assert result["neonplan"]["installed"] is False
-    assert result["neonplan"]["linked"] is False
 
 
 async def test_save_sensors_own_and_subscribe(
@@ -222,120 +223,70 @@ async def test_import_invalid(hass: HomeAssistant, hass_ws_client, config_entry:
     assert msg["error"]["code"] == "invalid_format"
 
 
-async def test_neonplan_source_and_save_sensors(
-    hass: HomeAssistant, hass_ws_client, hass_storage, auto_entry: MockConfigEntry, neonplan: FakeNeonPlanData
+async def test_neonplan_runtime_data_is_ignored(
+    hass: HomeAssistant, hass_ws_client, config_entry: MockConfigEntry, stored_demo, neonplan: FakeNeonPlanData
 ) -> None:
-    """With NeonPlan loaded, auto reads its building; saves write only the placement fields."""
-    await _setup(hass, auto_entry)
+    """A loaded NeonPlan is neither read nor written, and its change signal changes nothing."""
+    neonplan.building["floors"][0]["rooms"] = []
+    await _setup(hass, config_entry)
     client = await hass_ws_client(hass)
     msg = await _call(client, type="presence_planner/get")
-    result = msg["result"]
-    assert result["source"] == "neonplan"
-    assert result["neonplan"]["installed"] is True
-    sensors = {s["entity_id"]: s for s in result["sensors"]}
-    # the light placement is no presence sensor
-    assert "light.demo_living" not in sensors
-    assert len(sensors) == 5
-    bedroom = sensors["binary_sensor.demo_bedroom_presence"]
-    assert bedroom["phi"] == 135
-    assert bedroom["height"] == 1.7
-    assert bedroom["fov_h"] == 120
-    assert len(er.async_entries_for_config_entry(er.async_get(hass), auto_entry.entry_id)) == 15
-
-    bedroom = {**bedroom, "phi": 180, "height": 2.1, "tilt": 20, "reach": 5.5, "mount": "corner", "fov_v": 70}
-    msg = await _call(client, type="presence_planner/save_sensors", sensors=[bedroom])
-    assert msg["success"], msg
-    placement = next(
-        p
-        for f in neonplan.building["floors"]
-        for p in f["placements"]
-        if p["entity_id"] == "binary_sensor.demo_bedroom_presence"
-    )
-    assert placement == {
-        "entity_id": "binary_sensor.demo_bedroom_presence",
-        "x": 8.57,
-        "z": 0.03,
-        "y": 2.1,
-        "rotation": 90.0,
-        "tilt": 20.0,
-        "fov": 120.0,
-        "reach": 5.5,
-        "icon": "motion-sensor",
-        "locked": True,
-    }
-    extras = hass_storage[DOMAIN]["data"]["sensors"]["binary_sensor.demo_bedroom_presence"]
-    assert extras["mount"] == "corner"
-    assert extras["fov_v"] == 70
-    assert "phi" not in extras and "x" not in extras
-    assert len(neonplan.saved) == 1
-    msg = await _call(client, type="presence_planner/get")
-    saved = next(s for s in msg["result"]["sensors"] if s["entity_id"] == "binary_sensor.demo_bedroom_presence")
-    assert saved["phi"] == 180
-    assert saved["fov_v"] == 70
-
-
-async def test_neonplan_change_signal(hass: HomeAssistant, hass_ws_client, auto_entry, neonplan) -> None:
-    """A save in NeonPlan reaches our subscribers."""
-    await _setup(hass, auto_entry)
-    client = await hass_ws_client(hass)
-    assert (await _call(client, type="presence_planner/subscribe"))["success"]
-    building = copy.deepcopy(neonplan.building)
-    building["floors"][0]["placements"][0]["x"] = 1.0
-    await neonplan.async_save_building(building)
-    event = await client.receive_json()
-    assert event["type"] == "event"
-    msg = await _call(client, type="presence_planner/get")
-    living = next(s for s in msg["result"]["sensors"] if s["entity_id"] == "binary_sensor.demo_living_presence")
-    assert living["x"] == 1.0
-
-
-async def test_link_neonplan(hass: HomeAssistant, hass_ws_client, auto_entry, neonplan) -> None:
-    """link_neonplan adds the menu button once."""
-    await _setup(hass, auto_entry)
-    client = await hass_ws_client(hass)
-    msg = await _call(client, type="presence_planner/link_neonplan")
-    assert msg["success"], msg
-    assert msg["result"] == {"linked": True, "added": True}
-    msg = await _call(client, type="presence_planner/link_neonplan")
-    assert msg["result"] == {"linked": True, "added": False}
-    assert neonplan.building["settings"]["buttons"] == [
-        {
-            "id": "presence_planner",
-            "label": "Presence Planner",
-            "icon": "radar",
-            "action": "navigate",
-            "target": "/presence-planner",
-        }
+    assert [r["id"] for r in msg["result"]["plan"]["floors"][0]["rooms"]] == [
+        r["id"] for r in stored_demo["data"]["plan"]["floors"][0]["rooms"]
     ]
-    assert len(neonplan.saved) == 1
+    revision = msg["result"]["revision"]
+    sensors = copy.deepcopy(msg["result"]["sensors"])
+    sensors[0]["x"] = 1.5
+    msg = await _call(client, type="presence_planner/save_sensors", sensors=sensors)
+    assert msg["success"], msg
+    assert neonplan.saved == []
+    await neonplan.async_save_building(copy.deepcopy(neonplan.building))
+    await hass.async_block_till_done()
     msg = await _call(client, type="presence_planner/get")
-    assert msg["result"]["neonplan"]["linked"] is True
-
-
-async def test_link_neonplan_unavailable(hass: HomeAssistant, hass_ws_client, auto_entry) -> None:
-    """Without NeonPlan the link is refused."""
-    await _setup(hass, auto_entry)
-    client = await hass_ws_client(hass)
+    assert msg["result"]["revision"] == revision + 1
     msg = await _call(client, type="presence_planner/link_neonplan")
-    assert not msg["success"]
-    assert msg["error"]["code"] == "neonplan_unavailable"
+    assert msg["error"]["code"] == "unknown_command"
 
 
-async def test_neonplan_incompatible_falls_back(hass: HomeAssistant, hass_ws_client, auto_entry, stored_demo) -> None:
-    """A NeonPlan object without the expected attributes: own plan, reported as neonplan_incompatible."""
-
-    class Strange:
-        building = None
-
-    hass.data["neonplan3d"] = Strange()
+async def test_migration_from_neonplan_source(
+    hass: HomeAssistant, hass_ws_client, auto_entry: MockConfigEntry, demo_plan, demo_sensors
+) -> None:
+    """A 0.1.x entry drops the source option, keeps its entities and asks for a NeonPlan import once."""
+    room = demo_plan["floors"][0]["rooms"][0]["id"]
+    registry = er.async_get(hass)
+    kept = registry.async_get_or_create(
+        "sensor", DOMAIN, f"{auto_entry.entry_id}_demo_{room}_coverage", config_entry=auto_entry
+    )
+    for sensor in demo_sensors:
+        hass.states.async_set(sensor["entity_id"], "off", {"device_class": "presence"})
     await _setup(hass, auto_entry)
+    assert auto_entry.minor_version == 2
+    assert "plan_source" not in auto_entry.options
+    assert auto_entry.data["neonplan_import"] is True
+    assert registry.async_get(kept.entity_id) is not None
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "import_neonplan") is not None
+
     client = await hass_ws_client(hass)
-    msg = await _call(client, type="presence_planner/get")
-    assert msg["result"]["source"] == "own"
-    assert msg["result"]["neonplan"]["error"] == "neonplan_incompatible"
-    assert len(msg["result"]["sensors"]) == 5
-    msg = await _call(client, type="presence_planner/link_neonplan")
-    assert msg["error"]["code"] == "neonplan_incompatible"
+    msg = await _call(client, type="presence_planner/import", data={"building": demo_building(demo_plan, demo_sensors)})
+    assert msg["success"], msg
+    await hass.async_block_till_done()
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "import_neonplan") is None
+    assert registry.async_get(kept.entity_id) is not None
+    assert len(er.async_entries_for_config_entry(registry, auto_entry.entry_id)) == 15
+
+
+async def test_migration_own_source_needs_no_import(hass: HomeAssistant, stored_demo) -> None:
+    """A 0.1.x entry that already used the own plan only loses the option."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, title="Presence Planner", data={}, options={**OPTIONS, "plan_source": "own"},
+        unique_id=DOMAIN, version=1, minor_version=1,
+    )
+    entry.add_to_hass(hass)
+    await _setup(hass, entry)
+    assert entry.state is ConfigEntryState.LOADED
+    assert "neonplan_import" not in entry.data
+    assert "plan_source" not in entry.options
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "import_neonplan") is None
 
 
 async def test_device_profiles(hass: HomeAssistant, hass_ws_client, config_entry: MockConfigEntry) -> None:

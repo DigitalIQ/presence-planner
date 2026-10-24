@@ -51,7 +51,7 @@ function sensorFields(h, s) {
     ${numberField(h, s, "z", { step: 0.01, label: t("sensor.z"), unit: "m" })}
 
     ${glass ? html`<div class="full warn">${t("sensor.glass_warning")}</div>` : nothing}
-    ${h._s.source === "own" && h.isAdmin
+    ${h.isAdmin
       ? html`<div class="full"><button @click=${() => h.removeSensor(s.entity_id)}>${t("sensor.remove")}</button></div>`
       : nothing}
   </div>`;

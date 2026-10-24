@@ -1,7 +1,5 @@
 {
   "title": "Presence Planner",
-  "source.neonplan": "NeonPlan",
-  "source.own": "Own plan",
   "floor.select": "Floor",
   "floor.default_name": "Ground floor",
 
@@ -9,7 +7,6 @@
   "action.reset": "Reset",
   "action.export": "Export",
   "action.import": "Import",
-  "action.link_neonplan": "Link in NeonPlan",
   "action.reload": "Reload",
   "action.cancel": "Cancel",
 
@@ -18,7 +15,6 @@
   "status.saved": "Saved.",
   "status.exported": "Export downloaded.",
   "status.imported": "Plan imported.",
-  "status.linked": "Button added to the NeonPlan menu.",
   "status.revision": "Revision {revision}",
   "status.sensors": "{count} sensors on this floor",
   "status.unsaved": "unsaved changes",
@@ -28,16 +24,12 @@
 
   "error.generic": "Something went wrong: {detail}",
   "error.unauthorized": "Not allowed. Saving and importing need an administrator account in Home Assistant.",
-  "error.neonplan_incompatible": "This NeonPlan 3D version is not supported yet. Presence Planner uses its own plan until an update is available.",
   "error.not_loaded": "The Presence Planner integration is not loaded. Add it under Settings > Devices & services.",
   "error.not_found": "Not found: {detail}",
   "error.not_supported": "Not possible with the current plan source: {detail}",
   "error.invalid_format": "The file is not in a supported format: {detail}",
   "error.invalid_json": "The file is not valid JSON.",
   "error.timeout": "Home Assistant did not answer in time.",
-  "error.neonplan_error": "NeonPlan reported an error: {detail}",
-  "error.neonplan_unavailable": "NeonPlan 3D is not available right now. Presence Planner uses its own plan.",
-  "error.neonplan_rejected": "NeonPlan did not accept the change: {detail}",
   "error.no_plan": "There is no plan to export yet.",
   "error.model": "The plan could not be calculated: {detail}",
 

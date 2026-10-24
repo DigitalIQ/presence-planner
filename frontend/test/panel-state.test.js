@@ -9,7 +9,7 @@ const profiles = JSON.parse(readFileSync(new URL("../../shared/profiles.json", i
 const floorId = demo.plan.floors[0].id;
 
 const sensor = (over = {}) => ({ entity_id: "binary_sensor.a", floor_id: floorId, x: 1, z: 1, height: 1.9, phi: 0, tilt: 10, mount: "wall", profile: "aqara_fp300", fov_h: 120, fov_v: 90, reach: 6, active: true, ...over });
-const loaded = (sensors = [sensor()], extra = {}) => S.applyLoad(S.initialState(), { source: "own", revision: 3, plan: demo.plan, sensors, profiles, options: { thin_db: 12 }, neonplan: { installed: true, linked: false }, ...extra });
+const loaded = (sensors = [sensor()], extra = {}) => S.applyLoad(S.initialState(), { revision: 3, plan: demo.plan, sensors, profiles, options: { thin_db: 12 }, neonplan: { installed: true, linked: false }, ...extra });
 
 test("applyLoad sets plan, floor, selection and options", () => {
   const st = loaded();
@@ -22,10 +22,9 @@ test("applyLoad sets plan, floor, selection and options", () => {
   assert.deepEqual(st.editPlan, st.plan);
 });
 
-test("applyLoad leaves the editor tab when the source is NeonPlan", () => {
-  const st = S.applyLoad({ ...S.initialState(), tab: "editor" }, { source: "neonplan", plan: demo.plan, sensors: [] });
-  assert.equal(st.tab, "planner");
-  assert.equal(S.editorAvailable(st), false);
+test("applyLoad keeps the editor tab", () => {
+  const st = S.applyLoad({ ...S.initialState(), tab: "editor" }, { plan: demo.plan, sensors: [] });
+  assert.equal(st.tab, "editor");
 });
 
 test("updateSensor cleans values and marks dirty", () => {
@@ -177,12 +176,6 @@ test("applyCandidate and optimizerTarget", () => {
   const b = S.getSensor(st, "binary_sensor.b");
   assert.equal(b.x, 7);
   assert.equal(b.phi, 90);
-});
-
-test("link button only when NeonPlan is installed and not linked", () => {
-  assert.equal(S.canLinkNeonplan(loaded()), true);
-  assert.equal(S.canLinkNeonplan(loaded(undefined, { neonplan: { installed: true, linked: true } })), false);
-  assert.equal(S.canLinkNeonplan(loaded(undefined, { neonplan: { installed: false } })), false);
 });
 
 test("profileList accepts dict, list and map", () => {

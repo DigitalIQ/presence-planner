@@ -59,7 +59,10 @@ class PresencePlannerStore:
 
     @property
     def extras(self) -> dict[str, dict[str, Any]]:
-        """Fields per entity that NeonPlan does not keep."""
+        """Sensor fields per entity saved by 0.1.x while NeonPlan was the plan source.
+
+        Read only: an imported NeonPlan file gets them back for its placements.
+        """
         return self.data["sensors"]
 
     @property
@@ -89,10 +92,3 @@ class PresencePlannerStore:
         """Replace the own sensor list."""
         validate_sensors(sensors, self.plan)
         await self._commit({**self.data, "own_sensors": copy.deepcopy(sensors)})
-
-    async def async_update_extras(self, extras: dict[str, dict[str, Any]]) -> None:
-        """Merge extra fields per entity."""
-        data = copy.deepcopy(self.data)
-        for entity_id, fields in extras.items():
-            data["sensors"][entity_id] = {**data["sensors"].get(entity_id, {}), **copy.deepcopy(fields)}
-        await self._commit(data)

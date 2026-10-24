@@ -16,12 +16,8 @@ export class PlannerError extends Error {
 
 const KEY_BY_CODE = {
   unauthorized: "error.unauthorized",
-  neonplan_incompatible: "error.neonplan_incompatible",
   unknown_command: "error.not_loaded",
   not_loaded: "error.not_loaded",
-  neonplan_error: "error.neonplan_error",
-  neonplan_unavailable: "error.neonplan_unavailable",
-  neonplan_rejected: "error.neonplan_rejected",
   no_plan: "error.no_plan",
   not_found: "error.not_found",
   not_supported: "error.not_supported",
@@ -36,8 +32,6 @@ export function mapError(err) {
   const code = (err && (err.code || (err.error && err.error.code))) || "unknown";
   const message = (err && (err.message || (err.error && err.error.message))) || String(err);
   let mapped = KEY_BY_CODE[code];
-  // NeonPlan incompatibility may also arrive inside the message of a generic error.
-  if (!mapped && /neonplan_incompatible/.test(message)) return new PlannerError("neonplan_incompatible", message, KEY_BY_CODE.neonplan_incompatible);
   if (!mapped && /unauthori[sz]ed|admin/i.test(message)) return new PlannerError("unauthorized", message, KEY_BY_CODE.unauthorized);
   return new PlannerError(code, message, mapped || "error.generic");
 }
@@ -81,7 +75,7 @@ export class PlannerClient {
     }
   }
 
-  /** → { source, revision, plan, sensors, profiles, options, neonplan } */
+  /** → { revision, plan, sensors, profiles, options } */
   get() {
     return this._call("get");
   }
@@ -110,10 +104,6 @@ export class PlannerClient {
 
   importPlan(data) {
     return this._call("import", { data });
-  }
-
-  linkNeonplan() {
-    return this._call("link_neonplan");
   }
 
   async deviceProfiles() {

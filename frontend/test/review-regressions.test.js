@@ -47,7 +47,7 @@ test("live contacts respect inversion and treat unknown states as open", () => {
 });
 
 test("edited floors are selectable and optimizer contexts cannot cross floors or revisions", () => {
-  const p=plan(); const s=S.applyLoad(S.initialState(),{source:"own",plan:p,sensors:[{entity_id:"binary_sensor.a",floor_id:"f",x:1,z:1}],revision:1});
+  const p=plan(); const s=S.applyLoad(S.initialState(),{plan:p,sensors:[{entity_id:"binary_sensor.a",floor_id:"f",x:1,z:1}],revision:1});
   const edited={...p,floors:[...p.floors,{id:"new",rooms:[]}]};
   const next=S.selectFloor(S.setEditPlan(s,edited),"new");
   assert.equal(S.floorOf(next).id,"new");
@@ -78,7 +78,7 @@ test("panel rejects a late optimizer reply and stale Apply after an editor floor
   const panel=new PresencePlannerPanel();
   panel._scheduleEval=()=>{};
   panel._rebuildModel=()=>{panel._model=buildModel(panel._s.editPlan,panel._s.floorId);};
-  panel._s=S.applyLoad(S.initialState(),{source:"own",plan:p,revision:1,sensors:[{entity_id:"binary_sensor.a",floor_id:"f",x:1,z:1},{entity_id:"binary_sensor.b",floor_id:"b",x:1,z:1}]});
+  panel._s=S.applyLoad(S.initialState(),{plan:p,revision:1,sensors:[{entity_id:"binary_sensor.a",floor_id:"f",x:1,z:1},{entity_id:"binary_sensor.b",floor_id:"b",x:1,z:1}]});
   panel._rebuildModel();
   let finish;
   panel._runner={cancel(){},run(){return new Promise(resolve=>{finish=resolve;});}};
@@ -95,7 +95,7 @@ test("panel rejects a late optimizer reply and stale Apply after an editor floor
 for (const change of ["profile", "cancel", "contact"]) test(`panel rejects stale optimizer reply after ${change}`, async () => {
   const p=plan(); const panel=new PresencePlannerPanel();
   panel._scheduleEval=()=>{};
-  panel._s=S.applyLoad(S.initialState(),{source:"own",plan:p,revision:1,sensors:[{entity_id:"binary_sensor.a",floor_id:"f",x:1,z:1}]});
+  panel._s=S.applyLoad(S.initialState(),{plan:p,revision:1,sensors:[{entity_id:"binary_sensor.a",floor_id:"f",x:1,z:1}]});
   panel._model=buildModel(p,"f");
   let finish;
   panel._runner={cancel(){},run(){return new Promise(resolve=>{finish=resolve;});}};

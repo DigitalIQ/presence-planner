@@ -4,7 +4,7 @@
 
 Plan presence and motion sensors on your floor plan in Home Assistant: coverage per room and height, false-trigger risk, suggested sensor spots and a cleaned room occupancy. With its own editor and a 3D view, standalone or together with [NeonPlan 3D](https://github.com/Mastershort/neonplan3d).
 
-**Beta 0.1.0.** The results are a geometric planning aid. Check sensor spots and automations in your own home. Presence Planner is independent of NeonPlan 3D and of the sensor manufacturers.
+**Beta 0.2.0.** The results are a geometric planning aid. Check sensor spots and automations in your own home. Presence Planner is independent of NeonPlan 3D and of the sensor manufacturers.
 
 ## Screenshots
 
@@ -24,7 +24,7 @@ More images in [docs/images](docs/images): the 3D light mode, the best-spot sugg
 - Home Assistant **2026.10.2 or newer** within the supported 2026.10 series. Later HA series need their own compatibility check.
 - Admin rights to set up, import and save. Logged-in users can read and export the whole plan and the sensor information.
 - A browser with WebGL2 for the 3D view. The 2D planner also works without 3D.
-- NeonPlan is optional. The adapter was tested with 1.19.2 and 1.21.0. It uses internal runtime data, not a guaranteed public API. Check it separately after a NeonPlan update.
+- NeonPlan 3D is optional. Presence Planner reads NeonPlan files, it does not connect to NeonPlan at runtime.
 
 ## Installation
 
@@ -39,15 +39,15 @@ Inclusion in the HACS default list is a separate step ([hacs/default#12395](http
 
 ## Setup
 
-The integration options offer three plan sources:
+Presence Planner works on its own floor plan. Draw floors and rooms in the editor, or import a file, and assign the rooms to HA areas.
 
-- **Automatic:** use a compatible, loaded NeonPlan, otherwise your own plan.
-- **NeonPlan:** prefer NeonPlan. If the connection is missing or structurally incompatible, an error is shown and the planner falls back to your own plan.
-- **Own floor plan:** create or import floors and rooms in the editor and assign them to HA areas.
+Coming from NeonPlan 3D? Export the floor plan or a backup in NeonPlan as a JSON file and choose **Import** in the panel. Rooms, doors, windows, furniture and the presence sensors placed in NeonPlan become your own plan. Later changes in NeonPlan do not reach Presence Planner; import again when you want them.
 
 Add sensor entities, place them, check their profiles and save your changes. Each room gets coverage, false-trigger risk and cleaned occupancy. Profiles preset field of view and range; check the mounting yourself.
 
-With NeonPlan, **Save** writes the sensor placement fields and the planner's own extras. The link button adds an entry to NeonPlan's menu only when you click it. Floor plan imports change your own plan, not the NeonPlan building.
+Presence Planner never writes NeonPlan's data. **Save** changes only the planner's own plan and sensors.
+
+Upgrading from 0.1.x with NeonPlan as plan source: the source option is gone. Your room entities stay, and Home Assistant shows a repair notice until you import your NeonPlan floor plan once as described above.
 
 ## Backup and import
 
@@ -74,9 +74,9 @@ The sidebar entry is also visible to logged-in non-admin users. They can read an
 
 ## Updating and removing
 
-Create an HA backup before updating. Update in HACS, restart Home Assistant and check the plan source, the sensor spots and the three room entities. After a NeonPlan update, test its connection separately.
+Create an HA backup before updating. Update in HACS, restart Home Assistant and check the plan, the sensor spots and the three room entities.
 
-To remove Presence Planner, first delete the integration under Devices & services, then remove the files through HACS and restart Home Assistant. This does not undo sensor placements in NeonPlan. Remove the optional NeonPlan menu button there yourself if needed. A saved planner file stays as a data source; delete it only on purpose and with a matching backup.
+To remove Presence Planner, first delete the integration under Devices & services, then remove the files through HACS and restart Home Assistant. Presence Planner 0.1.x could add a menu button to NeonPlan; remove it there yourself if needed. A saved planner file stays as a data source; delete it only on purpose and with a matching backup.
 
 ## Development and checks
 
@@ -96,7 +96,7 @@ git diff --exit-code custom_components/presence_planner/frontend
 
 The bundle diff checks an already committed build. HA and the test plugin are pinned to compatible versions. The local package check verifies metadata, documentation, icon and shipped files. The official HACS check runs in GitHub Actions together with hassfest. There is no automatic release workflow.
 
-Report bugs with your HA version, plan source, NeonPlan version and reproducible steps under [Issues](https://github.com/DigitalIQ/presence-planner/issues). Use synthetic data for public examples, and remove real floor plans and credentials before sharing.
+Report bugs with your HA version, the Presence Planner version and reproducible steps under [Issues](https://github.com/DigitalIQ/presence-planner/issues). Use synthetic data for public examples, and remove real floor plans and credentials before sharing.
 
 ## License
 

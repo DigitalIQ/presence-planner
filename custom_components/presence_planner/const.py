@@ -8,19 +8,12 @@ DOMAIN: Final = "presence_planner"
 TITLE: Final = "Presence Planner"
 
 # options (config entry options)
-CONF_PLAN_SOURCE: Final = "plan_source"
 CONF_THIN_DB: Final = "thin_db"
 CONF_HOLD_TIME: Final = "hold_time"
 CONF_ECHO_WINDOW: Final = "echo_window"
 CONF_SPILL_THRESHOLD: Final = "spill_threshold"
 
-SOURCE_AUTO: Final = "auto"
-SOURCE_NEONPLAN: Final = "neonplan"
-SOURCE_OWN: Final = "own"
-PLAN_SOURCES: Final = [SOURCE_AUTO, SOURCE_NEONPLAN, SOURCE_OWN]
-
 DEFAULT_OPTIONS: Final[dict] = {
-    CONF_PLAN_SOURCE: SOURCE_AUTO,
     CONF_THIN_DB: 10,
     CONF_HOLD_TIME: 30,
     CONF_ECHO_WINDOW: 5,
@@ -37,6 +30,9 @@ DEFAULT_CEILING_TILT: Final = 90.0
 
 # binary sensors that count as presence or motion sensors
 SENSOR_DEVICE_CLASSES: Final = frozenset({"occupancy", "presence", "motion"})
+
+# repair issue for entries that used NeonPlan as live source before 0.2
+ISSUE_IMPORT_NEONPLAN: Final = "import_neonplan"
 
 # entities per room (unique id: <entry>_<floor>_<room>_<key>)
 ENTITY_KEYS: Final = ("coverage", "misfire_risk", "occupancy")
@@ -58,14 +54,3 @@ PANEL_ICON: Final = "mdi:radar"
 PANEL_COMPONENT: Final = "presence-planner-panel"
 STATIC_URL: Final = "/presence_planner/frontend"
 PANEL_BUNDLE: Final = "presence-planner-panel.js"
-
-# NeonPlan 3D
-NEONPLAN_DOMAIN: Final = "neonplan3d"
-NEONPLAN_SIGNAL: Final = "neonplan3d_building_updated"
-NEONPLAN_BUTTON: Final[dict] = {
-    "id": "presence_planner",
-    "label": TITLE,
-    "icon": "radar",
-    "action": "navigate",
-    "target": "/presence-planner",
-}

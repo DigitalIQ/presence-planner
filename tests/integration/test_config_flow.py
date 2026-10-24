@@ -22,7 +22,6 @@ async def test_user_flow_creates_single_entry(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Presence Planner"
     assert result["options"] == {
-        "plan_source": "auto",
         "thin_db": 10,
         "hold_time": 30,
         "echo_window": 5,
@@ -42,12 +41,11 @@ async def test_options_flow(hass: HomeAssistant, config_entry: MockConfigEntry, 
     assert result["step_id"] == "init"
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        {"plan_source": "neonplan", "thin_db": 6, "hold_time": 60, "echo_window": 3, "spill_threshold": 0.1},
+        {"thin_db": 6, "hold_time": 60, "echo_window": 3, "spill_threshold": 0.1},
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert config_entry.options == {
-        "plan_source": "neonplan",
         "thin_db": 6.0,
         "hold_time": 60.0,
         "echo_window": 3.0,
@@ -55,6 +53,3 @@ async def test_options_flow(hass: HomeAssistant, config_entry: MockConfigEntry, 
     }
     coordinator = config_entry.runtime_data
     assert coordinator.hold_time == 60
-    # NeonPlan is not loaded: the own plan is used and the reason is reported
-    assert coordinator.source == "own"
-    assert coordinator.neonplan_error == "neonplan_unavailable"

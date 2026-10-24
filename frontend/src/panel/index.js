@@ -127,9 +127,6 @@ export class PresencePlannerPanel extends LitElement {
       }
       this._setState(S.applyLoad(this._s, res));
       this._status = null;
-      // The backend reports NeonPlan problems in `neonplan.error` and falls back to the own plan.
-      const npErr = res.neonplan && (res.neonplan.error || (res.neonplan.incompatible && "neonplan_incompatible"));
-      if (npErr) this._status = { key: mapError({ code: npErr, message: npErr }).i18nKey, error: true, detail: npErr };
       return true;
     } catch (e) {
       const err = mapError(e);
@@ -362,7 +359,7 @@ export class PresencePlannerPanel extends LitElement {
     this._saving = true;
     this._status = { key: "status.saving" };
     try {
-      if (this._s.planDirty && S.editorAvailable(this._s)) await this._client.savePlan(this._s.editPlan);
+      if (this._s.planDirty) await this._client.savePlan(this._s.editPlan);
       let revision;
       if (this._s.dirty) {
         const res = await this._client.saveSensors(S.sensorsForSave(this._s));
@@ -433,17 +430,6 @@ export class PresencePlannerPanel extends LitElement {
       this._status = { key: m.i18nKey, error: true, detail: m.message };
     } finally {
       this._busy = false;
-    }
-  }
-
-  async linkNeonplan() {
-    try {
-      await this._client.linkNeonplan();
-      this._status = { key: "status.linked" };
-      await this._load();
-    } catch (e) {
-      const err = mapError(e);
-      this._status = { key: err.i18nKey, error: true, detail: err.message };
     }
   }
 
@@ -545,9 +531,6 @@ export class PresencePlannerPanel extends LitElement {
     return html`<header class="top">
       <ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>
       <h1>${t("title")}</h1>
-      ${st.source
-        ? html`<span class="badge ${st.source === "neonplan" ? "np" : ""}">${st.source === "neonplan" ? t("source.neonplan") : t("source.own")}</span>`
-        : nothing}
       ${floors.length > 1
         ? html`<select aria-label=${t("floor.select")} .value=${st.floorId || ""} @change=${(e) => this._setState({ ...st, floorId: e.target.value, selected: null })}>
             ${floors.map((f) => html`<option value=${f.id} ?selected=${f.id === st.floorId}>${f.name || f.id}</option>`)}
@@ -560,7 +543,6 @@ export class PresencePlannerPanel extends LitElement {
         <button ?disabled=${!st.plan || this._busy} @click=${() => this.exportPlan()}>${t("action.export")}</button>
         <button ?disabled=${this._busy || !this.isAdmin} @click=${() => this._pickImport()}>${t("action.import")}</button>
         <input id="import-file" type="file" accept=".json,application/json" hidden @change=${(e) => this._importFile(e)} />
-        ${S.canLinkNeonplan(st) ? html`<button ?disabled=${this._busy || !this.isAdmin} @click=${() => this.linkNeonplan()}>${t("action.link_neonplan")}</button>` : nothing}
       </div>
     </header>`;
   }
@@ -576,7 +558,7 @@ export class PresencePlannerPanel extends LitElement {
       <p>${t("empty.no_plan")}</p>
       <div class="row" style="justify-content:center">
         <button @click=${() => this._pickImport()} ?disabled=${!this.isAdmin}>${t("action.import")}</button>
-        ${S.editorAvailable(this._s) ? html`<button class="primary" @click=${() => this._startOwnPlan()}>${t("empty.start_editor")}</button>` : nothing}
+        <button class="primary" @click=${() => this._startOwnPlan()}>${t("empty.start_editor")}</button>
       </div>
     </div>`;
   }
@@ -589,20 +571,17 @@ export class PresencePlannerPanel extends LitElement {
   _renderBody() {
     const t = this.t;
     const st = this._s;
-    const editor = S.editorAvailable(st);
-    const tab = editor ? st.tab : "planner";
+    const tab = st.tab;
     return html`
-      <nav class="tabs" role="tablist" aria-label=${t("tabs.label")} @keydown=${(e) => this._tabKey(e, editor)}>
+      <nav class="tabs" role="tablist" aria-label=${t("tabs.label")} @keydown=${(e) => this._tabKey(e)}>
         <button role="tab" id="tab-planner" aria-controls="tp-planner" aria-selected=${tab === "planner" ? "true" : "false"} tabindex=${tab === "planner" ? 0 : -1} @click=${() => this.setOption("tab", "planner")}>${t("tabs.planner")}</button>
-        ${editor
-          ? html`<button role="tab" id="tab-editor" aria-controls="tp-editor" aria-selected=${tab === "editor" ? "true" : "false"} tabindex=${tab === "editor" ? 0 : -1} @click=${() => this.setOption("tab", "editor")}>${t("tabs.editor")}</button>`
-          : nothing}
+        ${html`<button role="tab" id="tab-editor" aria-controls="tp-editor" aria-selected=${tab === "editor" ? "true" : "false"} tabindex=${tab === "editor" ? 0 : -1} @click=${() => this.setOption("tab", "editor")}>${t("tabs.editor")}</button>`}
       </nav>
       ${tab === "editor" ? this._renderEditor() : this._renderPlanner()}`;
   }
 
-  _tabKey(e, editor) {
-    if (!editor || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+  _tabKey(e) {
+    if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
     const next = this._s.tab === "planner" ? "editor" : "planner";
     this.setOption("tab", next);
     this.updateComplete.then(() => {

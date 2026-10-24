@@ -11,10 +11,9 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import DOMAIN, SIGNAL_UPDATED, SOURCE_OWN
+from .const import DOMAIN, SIGNAL_UPDATED
 from .devices import device_profiles
 from .export import ImportFormatError, import_data, to_neonplan_import
-from .neonplan import NeonPlanError
 from .validation import PlanValidationError, validate_plan
 
 if TYPE_CHECKING:
@@ -73,7 +72,6 @@ def async_register_commands(hass: HomeAssistant) -> None:
         ws_save_plan,
         ws_export,
         ws_import,
-        ws_link_neonplan,
         ws_device_profiles,
     ):
         websocket_api.async_register_command(hass, command)
@@ -104,22 +102,17 @@ async def _after_write(hass: HomeAssistant, coordinator: PresencePlannerCoordina
 @websocket_api.websocket_command({vol.Required("type"): "presence_planner/get"})
 @websocket_api.async_response
 async def ws_get(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
-    """Return source, revision, plan, sensors, profiles, options and the NeonPlan state."""
+    """Return revision, plan, sensors, profiles and options."""
     if (coordinator := _coordinator(hass, connection, msg)) is None:
         return
-    neonplan = await coordinator.adapter.async_info()
-    if coordinator.neonplan_error:
-        neonplan["error"] = coordinator.neonplan_error
     connection.send_result(
         msg["id"],
         {
-            "source": coordinator.source,
             "revision": coordinator.revision,
             "plan": coordinator.plan,
             "sensors": coordinator.sensors,
             "profiles": coordinator.profiles,
             "options": coordinator.options,
-            "neonplan": neonplan,
         },
     )
 
@@ -143,19 +136,13 @@ def ws_subscribe(hass: HomeAssistant, connection: websocket_api.ActiveConnection
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_save_sensors(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
-    """Write sensors to NeonPlan (placement fields) and our store, or to the own store."""
+    """Replace the own sensors."""
     if (coordinator := _coordinator(hass, connection, msg)) is None:
         return
     try:
         await coordinator.async_save_sensors(msg["sensors"])
     except PlanValidationError as err:
         connection.send_error(msg["id"], "invalid_plan", str(err))
-        return
-    except NeonPlanError as err:
-        connection.send_error(msg["id"], err.code, str(err))
-        return
-    except vol.Invalid as err:
-        connection.send_error(msg["id"], "neonplan_rejected", str(err))
         return
     connection.send_result(msg["id"], {"revision": await _after_write(hass, coordinator)})
 
@@ -180,10 +167,10 @@ async def ws_save_plan(hass: HomeAssistant, connection: websocket_api.ActiveConn
 @websocket_api.websocket_command({vol.Required("type"): "presence_planner/export", vol.Optional("plan"): PLAN_SCHEMA})
 @websocket_api.async_response
 async def ws_export(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
-    """The given plan, else the own plan, else the current plan, in the NeonPlan import format."""
+    """The given plan, else the own plan, in the NeonPlan import format."""
     if (coordinator := _coordinator(hass, connection, msg)) is None:
         return
-    plan = msg.get("plan") or coordinator.store.plan or coordinator.plan
+    plan = msg.get("plan") or coordinator.store.plan
     if not plan:
         connection.send_error(msg["id"], "no_plan", "There is no plan to export")
         return
@@ -196,7 +183,7 @@ async def ws_export(hass: HomeAssistant, connection: websocket_api.ActiveConnect
     # The import format has no sensors. They travel in an extra key that NeonPlan ignores, keyed by floor index
     # because the import format carries no floor ids.
     floor_index = {f["id"]: i for i, f in enumerate(plan.get("floors") or [])}
-    raw = coordinator.store.own_sensors if coordinator.source == SOURCE_OWN else coordinator.sensors
+    raw = coordinator.store.own_sensors
     sensors = [
         {**{k: s[k] for k in _EXPORT_SENSOR_KEYS if s.get(k) is not None}, "floor_index": floor_index[s["floor_id"]]}
         for s in raw
@@ -248,26 +235,6 @@ async def ws_import(hass: HomeAssistant, connection: websocket_api.ActiveConnect
         return
     await _after_write(hass, coordinator)
     connection.send_result(msg["id"], {"plan": plan, "sensors": sensors, "warnings": warnings})
-
-
-@websocket_api.websocket_command({vol.Required("type"): "presence_planner/link_neonplan"})
-@websocket_api.require_admin
-@websocket_api.async_response
-async def ws_link_neonplan(
-    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
-) -> None:
-    """Add the Presence Planner button to NeonPlan's menu (idempotent)."""
-    if (coordinator := _coordinator(hass, connection, msg)) is None:
-        return
-    try:
-        added = await coordinator.adapter.async_link()
-    except NeonPlanError as err:
-        connection.send_error(msg["id"], err.code, str(err))
-        return
-    except vol.Invalid as err:
-        connection.send_error(msg["id"], "neonplan_rejected", str(err))
-        return
-    connection.send_result(msg["id"], {"linked": True, "added": added})
 
 
 @websocket_api.websocket_command({vol.Required("type"): "presence_planner/device_profiles"})

@@ -132,13 +132,14 @@ def demo_sensors() -> list[dict[str, Any]]:
 
 @pytest.fixture
 def config_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """A config entry with the own plan as source."""
+    """A current config entry (1.2)."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Presence Planner",
         data={},
+        version=1,
+        minor_version=2,
         options={
-            "plan_source": "own",
             "thin_db": 10,
             "hold_time": 30,
             "echo_window": 5,
@@ -163,7 +164,7 @@ def stored_demo(hass_storage: dict[str, Any], demo_plan: dict, demo_sensors: lis
 
 
 class FakeNeonPlanData:
-    """Stand-in for NeonPlan's FloorplanData (hass.data['neonplan3d'])."""
+    """Stand-in for NeonPlan's FloorplanData (hass.data['neonplan3d']); Presence Planner must leave it alone."""
 
     def __init__(self, hass: HomeAssistant, building: dict[str, Any]) -> None:
         """Keep the building."""

@@ -16,14 +16,12 @@
       "init": {
         "title": "Optionen für Presence Planner",
         "data": {
-          "plan_source": "Quelle des Grundrisses",
           "thin_db": "Dämpfung dünner Wände",
           "hold_time": "Haltezeit",
           "echo_window": "Echo-Fenster",
           "spill_threshold": "Schwelle für Übersprechen"
         },
         "data_description": {
-          "plan_source": "Automatisch nutzt NeonPlan 3D, wenn es geladen ist, sonst den eigenen Grundriss.",
           "thin_db": "Dämpfung von Wänden unter 10 cm Stärke.",
           "hold_time": "So lange bleibt ein Raum nach der letzten gültigen Erkennung belegt.",
           "echo_window": "So kurz nach einem Melder im Nachbarraum kann ein Echo folgen.",
@@ -32,13 +30,10 @@
       }
     }
   },
-  "selector": {
-    "plan_source": {
-      "options": {
-        "auto": "Automatisch",
-        "neonplan": "NeonPlan 3D",
-        "own": "Eigener Grundriss"
-      }
+  "issues": {
+    "import_neonplan": {
+      "title": "NeonPlan-Grundriss importieren",
+      "description": "Presence Planner liest NeonPlan 3D nicht mehr live. Exportiere in NeonPlan 3D den Grundriss oder ein Backup als Datei, öffne dann das Presence-Planner-Panel und wähle **Importieren**. Deine Sensoren und Einstellungen kommen dabei mit."
     }
   },
   "entity": {

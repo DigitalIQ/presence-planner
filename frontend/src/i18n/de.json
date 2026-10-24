@@ -1,7 +1,5 @@
 {
   "title": "Presence Planner",
-  "source.neonplan": "NeonPlan",
-  "source.own": "Eigener Plan",
   "floor.select": "Etage",
   "floor.default_name": "Erdgeschoss",
 
@@ -9,7 +7,6 @@
   "action.reset": "Zurücksetzen",
   "action.export": "Exportieren",
   "action.import": "Importieren",
-  "action.link_neonplan": "In NeonPlan verlinken",
   "action.reload": "Neu laden",
   "action.cancel": "Abbrechen",
 
@@ -18,7 +15,6 @@
   "status.saved": "Gespeichert.",
   "status.exported": "Export heruntergeladen.",
   "status.imported": "Plan importiert.",
-  "status.linked": "Knopf im NeonPlan-Menü ergänzt.",
   "status.revision": "Revision {revision}",
   "status.sensors": "{count} Sensoren auf dieser Etage",
   "status.unsaved": "nicht gespeichert",
@@ -28,16 +24,12 @@
 
   "error.generic": "Da ist etwas schiefgegangen: {detail}",
   "error.unauthorized": "Keine Berechtigung. Speichern und Importieren gehen nur mit einem Administratorkonto in Home Assistant.",
-  "error.neonplan_incompatible": "Diese Version von NeonPlan 3D wird noch nicht unterstützt. Bis zu einem Update nutzt Presence Planner den eigenen Plan.",
   "error.not_loaded": "Die Integration Presence Planner ist nicht geladen. Richte sie unter Einstellungen > Geräte & Dienste ein.",
   "error.not_found": "Nicht gefunden: {detail}",
   "error.not_supported": "Mit der aktuellen Planquelle nicht möglich: {detail}",
   "error.invalid_format": "Das Dateiformat wird nicht unterstützt: {detail}",
   "error.invalid_json": "Die Datei ist kein gültiges JSON.",
   "error.timeout": "Home Assistant hat nicht rechtzeitig geantwortet.",
-  "error.neonplan_error": "NeonPlan meldet einen Fehler: {detail}",
-  "error.neonplan_unavailable": "NeonPlan 3D ist gerade nicht erreichbar. Presence Planner nutzt den eigenen Plan.",
-  "error.neonplan_rejected": "NeonPlan hat die Änderung nicht übernommen: {detail}",
   "error.no_plan": "Es gibt noch keinen Plan zum Exportieren.",
   "error.model": "Der Plan lässt sich nicht berechnen: {detail}",
 

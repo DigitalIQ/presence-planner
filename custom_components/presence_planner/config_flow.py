@@ -12,12 +12,10 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_ECHO_WINDOW,
     CONF_HOLD_TIME,
-    CONF_PLAN_SOURCE,
     CONF_SPILL_THRESHOLD,
     CONF_THIN_DB,
     DEFAULT_OPTIONS,
     DOMAIN,
-    PLAN_SOURCES,
     TITLE,
 )
 
@@ -34,11 +32,6 @@ def options_schema(options: dict[str, Any]) -> vol.Schema:
     current = {**DEFAULT_OPTIONS, **options}
     return vol.Schema(
         {
-            vol.Required(CONF_PLAN_SOURCE, default=current[CONF_PLAN_SOURCE]): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=PLAN_SOURCES, translation_key=CONF_PLAN_SOURCE, mode=selector.SelectSelectorMode.LIST
-                )
-            ),
             vol.Required(CONF_THIN_DB, default=current[CONF_THIN_DB]): _number(0, 40, 1, "dB"),
             vol.Required(CONF_HOLD_TIME, default=current[CONF_HOLD_TIME]): _number(0, 3600, 1, "s"),
             vol.Required(CONF_ECHO_WINDOW, default=current[CONF_ECHO_WINDOW]): _number(0, 600, 1, "s"),
@@ -51,6 +44,7 @@ class PresencePlannerConfigFlow(ConfigFlow, domain=DOMAIN):
     """Create the single entry."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Confirm and create the entry with default options."""
@@ -68,13 +62,12 @@ class PresencePlannerConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class PresencePlannerOptionsFlow(OptionsFlowWithReload):
-    """Plan source, thin wall attenuation and the cleaned occupancy timings."""
+    """Thin wall attenuation and the cleaned occupancy timings."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Show and store the options (the entry reloads afterwards)."""
         if user_input is not None:
             data = {
-                CONF_PLAN_SOURCE: user_input[CONF_PLAN_SOURCE],
                 CONF_THIN_DB: float(user_input[CONF_THIN_DB]),
                 CONF_HOLD_TIME: float(user_input[CONF_HOLD_TIME]),
                 CONF_ECHO_WINDOW: float(user_input[CONF_ECHO_WINDOW]),

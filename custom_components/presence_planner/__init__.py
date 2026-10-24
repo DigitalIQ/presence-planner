@@ -7,9 +7,10 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN, ENTITY_KEYS
+from .const import DOMAIN, ENTITY_KEYS, ISSUE_IMPORT_NEONPLAN
 from .coordinator import PresencePlannerCoordinator
 from .panel import async_register_panel, async_remove_panel
 from .store import PresencePlannerStore
@@ -28,8 +29,20 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: PresencePlannerConfigEntry) -> bool:
+    """1.1 -> 1.2: the NeonPlan plan source is gone; such entries are asked to import a NeonPlan file once."""
+    if entry.version > 1:
+        return False
+    if entry.minor_version < 2:
+        options = dict(entry.options)
+        source = options.pop("plan_source", "auto")
+        data = {**entry.data, "neonplan_import": True} if source != "own" else dict(entry.data)
+        hass.config_entries.async_update_entry(entry, data=data, options=options, minor_version=2)
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: PresencePlannerConfigEntry) -> bool:
-    """Load the store, pick the plan source, compute and add the panel and entities."""
+    """Load the store, compute and add the panel and entities."""
     store = PresencePlannerStore(hass)
     await store.async_load()
     coordinator = PresencePlannerCoordinator(hass, entry, store)
@@ -37,9 +50,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: PresencePlannerConfigEnt
     entry.runtime_data = coordinator
     entry.async_on_unload(coordinator.async_shutdown)
     await async_register_panel(hass)
+    _update_import_issue(hass, entry, coordinator)
     _remove_stale_entities(hass, entry, coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+def _update_import_issue(
+    hass: HomeAssistant, entry: PresencePlannerConfigEntry, coordinator: PresencePlannerCoordinator
+) -> None:
+    """Ask entries that used NeonPlan as live source (0.1.x) to import a NeonPlan file until they have a plan."""
+    if entry.data.get("neonplan_import") and coordinator.plan is None:
+        ir.async_create_issue(
+            hass, DOMAIN, ISSUE_IMPORT_NEONPLAN, is_fixable=False, severity=ir.IssueSeverity.WARNING,
+            translation_key=ISSUE_IMPORT_NEONPLAN,
+        )
+    else:
+        ir.async_delete_issue(hass, DOMAIN, ISSUE_IMPORT_NEONPLAN)
 
 
 def _remove_stale_entities(
@@ -47,8 +74,11 @@ def _remove_stale_entities(
 ) -> None:
     """Drop registry entries of rooms that are no longer in the plan (deleted rooms, new room ids after an import).
 
-    Without this they stay behind as "unavailable" entities and block their entity ids.
+    Without this they stay behind as "unavailable" entities and block their entity ids. Without any saved plan
+    (an entry that used NeonPlan as live source before 0.2) the entities stay until a plan is imported.
     """
+    if coordinator.plan is None:
+        return
     wanted = {
         f"{entry.entry_id}_{floor_id}_{room_id}_{key}"
         for floor_id, _floor_name, room_id, _room_name in coordinator.room_keys

@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 from custom_components.presence_planner.fusion import RoomFusion
-from custom_components.presence_planner.neonplan import NeonPlanError
 from custom_components.presence_planner.store import PresencePlannerStore
 
 from .test_websocket import _call, _setup
@@ -15,7 +14,7 @@ from .test_websocket import _call, _setup
 @pytest.mark.parametrize("command,payload", [
     ("save_sensors", {"sensors": []}),
     ("import", {"data": {"format": "neonplan-import", "floors": []}}),
-    ("link_neonplan", {}),
+    ("save_plan", {"plan": {"version": 1, "floors": []}}),
 ])
 async def test_all_mutations_require_admin(hass, hass_ws_client, hass_read_only_access_token, config_entry, stored_demo, command, payload):
     await _setup(hass, config_entry)
@@ -59,32 +58,13 @@ async def test_import_without_sensors_replaces_old_sensor_list(hass, hass_ws_cli
     assert (await _call(client, type="presence_planner/get"))["result"]["sensors"] == []
 
 
-async def test_failed_neonplan_write_keeps_extras(hass, config_entry, stored_demo, demo_sensors, monkeypatch):
+async def test_failed_store_commit_keeps_sensors(hass, config_entry, stored_demo, demo_sensors, monkeypatch):
     await _setup(hass, config_entry)
     c = config_entry.runtime_data
-    c.source = "neonplan"
     before = copy.deepcopy(c.store.data)
-    monkeypatch.setattr(c.adapter, "building", dict)
-    monkeypatch.setattr(c.adapter, "async_save_sensors", AsyncMock(side_effect=NeonPlanError("failed")))
-    with pytest.raises(NeonPlanError):
-        await c.async_save_sensors([{**demo_sensors[0], "active": False}])
-    assert c.store.data == before
-
-
-async def test_failed_store_commit_rolls_back_neonplan(hass, config_entry, stored_demo, demo_sensors, monkeypatch):
-    await _setup(hass, config_entry)
-    c = config_entry.runtime_data
-    c.source = "neonplan"
-    before = copy.deepcopy(c.store.data)
-    building = {"original": True}
-    monkeypatch.setattr(c.adapter, "building", lambda: building)
-    monkeypatch.setattr(c.adapter, "async_save_sensors", AsyncMock())
-    rollback = AsyncMock()
-    monkeypatch.setattr(c.adapter, "_async_save", rollback)
     monkeypatch.setattr(c.store._store, "async_save", AsyncMock(side_effect=OSError("disk full")))
     with pytest.raises(OSError):
         await c.async_save_sensors([{**demo_sensors[0], "active": False}])
-    rollback.assert_awaited_once_with(building)
     assert c.store.data == before
 
 

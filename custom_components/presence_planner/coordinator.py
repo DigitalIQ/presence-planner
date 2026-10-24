@@ -1,4 +1,4 @@
-"""Plan source, sensors and model results of Presence Planner."""
+"""Own plan, sensors and model results of Presence Planner."""
 
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ from .const import (
     CELL,
     CONF_ECHO_WINDOW,
     CONF_HOLD_TIME,
-    CONF_PLAN_SOURCE,
     CONF_SPILL_THRESHOLD,
     CONF_THIN_DB,
     DEBOUNCE_SECONDS,
@@ -26,19 +25,13 @@ from .const import (
     DOMAIN,
     HEIGHTS,
     SIGNAL_UPDATED,
-    SOURCE_AUTO,
-    SOURCE_NEONPLAN,
-    SOURCE_OWN,
 )
 from .core import build_model, evaluate, load_profiles, resolve_sensor, spill_detail
 from .devices import is_presence_entity, suggest_profile
-from .neonplan import NeonPlanAdapter, NeonPlanError, NeonPlanIncompatible, placement_to_sensor
-from .validation import PlanValidationError, validate_plan, validate_sensors
+from .neonplan import placement_to_sensor
+from .validation import validate_plan, validate_sensors
 
 _LOGGER = logging.getLogger(__name__)
-
-# pp-sensor fields that NeonPlan keeps when it is the source; everything else goes to our store
-NEONPLAN_OWNED = ("x", "z", "height", "phi", "tilt", "fov_h", "reach")
 
 
 def compute(plan: dict[str, Any] | None, sensors: list[dict[str, Any]], opts: dict[str, Any]) -> dict[str, Any]:
@@ -66,18 +59,15 @@ def compute(plan: dict[str, Any] | None, sensors: list[dict[str, Any]], opts: di
 
 
 class PresencePlannerCoordinator:
-    """Holds the plan source, the merged sensors and the results; notifies entities and subscribers."""
+    """Holds the own plan, the sensors and the results; notifies entities and subscribers."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, store: Any) -> None:
         """Create the coordinator."""
         self.hass = hass
         self.entry = entry
         self.store = store
-        self.adapter = NeonPlanAdapter(hass)
         self.options: dict[str, Any] = {**DEFAULT_OPTIONS, **entry.options}
         self.profiles: dict[str, Any] = {"profiles": []}
-        self.source = SOURCE_OWN
-        self.neonplan_error: str | None = None
         self.plan: dict[str, Any] | None = None
         self.sensors: list[dict[str, Any]] = []
         self.results: dict[str, Any] = {}
@@ -94,11 +84,10 @@ class PresencePlannerCoordinator:
     # life cycle
 
     async def async_setup(self) -> None:
-        """Load profiles and data, pick the source and compute once."""
+        """Load profiles and data and compute once."""
         self.profiles = await self.hass.async_add_executor_job(load_profiles)
         self._reload()
         self.room_keys = self._room_keys()
-        self._unsubs.append(self.adapter.async_listen(self._neonplan_changed))
         await self.async_recompute()
 
         @callback
@@ -137,27 +126,7 @@ class PresencePlannerCoordinator:
         """Least spill share that makes an echo possible."""
         return float(self.options[CONF_SPILL_THRESHOLD])
 
-    # source and data
-
-    def _pick_source(self) -> str:
-        wanted = self.options.get(CONF_PLAN_SOURCE, SOURCE_AUTO)
-        self.neonplan_error = None
-        if wanted == SOURCE_OWN:
-            return SOURCE_OWN
-        if not self.adapter.loaded:
-            if wanted == SOURCE_NEONPLAN:
-                self.neonplan_error = "neonplan_unavailable"
-            return SOURCE_OWN
-        try:
-            self.adapter.check()
-        except NeonPlanIncompatible as err:
-            _LOGGER.warning("NeonPlan 3D is not compatible, using the own plan: %s", err)
-            self.neonplan_error = NeonPlanIncompatible.code
-            return SOURCE_OWN
-        except NeonPlanError as err:
-            self.neonplan_error = err.code
-            return SOURCE_OWN
-        return SOURCE_NEONPLAN
+    # data
 
     def _resolve(self, sensor: dict[str, Any]) -> dict[str, Any]:
         if not sensor.get("profile"):
@@ -168,33 +137,8 @@ class PresencePlannerCoordinator:
             _LOGGER.debug("Could not resolve sensor %s", sensor.get("entity_id"), exc_info=True)
             return sensor
 
-    def _neonplan_sensors(self, plan: dict[str, Any]) -> list[dict[str, Any]]:
-        heights = {f["id"]: float(f.get("height") or 2.5) for f in plan.get("floors") or []}
-        extras = self.store.extras
-        sensors = []
-        for floor_id, placement in self.adapter.placements():
-            entity_id = placement.get("entity_id")
-            if not isinstance(entity_id, str) or not entity_id.startswith("binary_sensor."):
-                continue
-            if entity_id not in extras and not is_presence_entity(self.hass, entity_id):
-                continue
-            sensor = placement_to_sensor(floor_id, placement, extras.get(entity_id), heights.get(floor_id, 2.5))
-            sensors.append(self._resolve(sensor))
-        return sensors
-
     def _reload(self) -> None:
-        """Read plan and sensors from the current source."""
-        self.source = self._pick_source()
-        if self.source == SOURCE_NEONPLAN:
-            try:
-                plan = self.adapter.plan()
-                self.plan, self.sensors = plan, self._neonplan_sensors(plan)
-                validate_sensors(self.sensors, self.plan)
-                return
-            except (NeonPlanIncompatible, PlanValidationError) as err:
-                _LOGGER.warning("NeonPlan 3D is not compatible, using the own plan: %s", err)
-                self.neonplan_error = NeonPlanIncompatible.code
-                self.source = SOURCE_OWN
+        """Read the own plan and sensors from the store."""
         self.plan = copy.deepcopy(self.store.plan)
         self.sensors = [self._resolve(copy.deepcopy(s)) for s in self.store.own_sensors]
 
@@ -206,11 +150,6 @@ class PresencePlannerCoordinator:
         return tuple(keys)
 
     # change handling
-
-    @callback
-    def _neonplan_changed(self) -> None:
-        if self.options.get(CONF_PLAN_SOURCE) != SOURCE_OWN:
-            self.async_changed()
 
     @callback
     def async_changed(self) -> None:
@@ -252,38 +191,18 @@ class PresencePlannerCoordinator:
     # writes
 
     async def async_save_sensors(self, sensors: list[dict[str, Any]]) -> None:
-        """Write sensors: placement fields to NeonPlan and the rest to our store, or all to the own store."""
+        """Write the sensors to the own store."""
         async with self._write_lock:
-            await self._async_save_sensors(sensors)
-
-    async def _async_save_sensors(self, sensors: list[dict[str, Any]]) -> None:
-        """Serialize the two-store operation with the other planner writes."""
-        validate_sensors(sensors, self.plan)
-        if self.source == SOURCE_NEONPLAN:
-            extras = {
-                s["entity_id"]: {k: v for k, v in s.items() if k not in (*NEONPLAN_OWNED, "entity_id", "floor_id")}
-                for s in sensors
-            }
-            # NeonPlan's change signal reaches _neonplan_changed as well; the explicit call keeps it synchronous
-            previous_building = copy.deepcopy(self.adapter.building())
-            await self.adapter.async_save_sensors(sensors)
-            try:
-                await self.store.async_update_extras(extras)
-            except Exception:
-                # The two stores cannot share a transaction. Restore NeonPlan if our own commit fails.
-                await self.adapter._async_save(previous_building)
-                raise
-        else:
+            validate_sensors(sensors, self.plan)
             await self.store.async_set_own_sensors(sensors)
-        self.async_changed()
+            self.async_changed()
 
     async def async_save_plan(self, plan: dict[str, Any]) -> None:
-        """Replace the own plan (never touches NeonPlan)."""
+        """Replace the own plan."""
         async with self._write_lock:
             validate_plan(plan)
             await self.store.async_set_plan(plan)
-            if self.source == SOURCE_OWN:
-                self.async_changed()
+            self.async_changed()
 
     async def async_import(
         self, plan: dict[str, Any], building: dict[str, Any] | None, sensors: list[dict[str, Any]] | None = None
@@ -295,7 +214,7 @@ class PresencePlannerCoordinator:
     async def _async_import(
         self, plan: dict[str, Any], building: dict[str, Any] | None, sensors: list[dict[str, Any]] | None = None
     ) -> list[dict[str, Any]]:
-        """Store an imported plan as own plan; sensors from a NeonPlan building's placements become own sensors.
+        """Store an imported plan as own plan; sensors from a NeonPlan file's placements become own sensors.
 
         `sensors` are the sensors of an own export (already validated, floor ids of `plan`).
         """
@@ -314,8 +233,7 @@ class PresencePlannerCoordinator:
                             )
                         )
         await self.store.async_set_snapshot(plan, sensors)
-        if self.source == SOURCE_OWN:
-            self.async_changed()
+        self.async_changed()
         return sensors
 
     # entity helpers

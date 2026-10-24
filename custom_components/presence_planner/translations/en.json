@@ -16,14 +16,12 @@
       "init": {
         "title": "Presence Planner options",
         "data": {
-          "plan_source": "Floor plan source",
           "thin_db": "Thin wall attenuation",
           "hold_time": "Hold time",
           "echo_window": "Echo window",
           "spill_threshold": "Spill threshold"
         },
         "data_description": {
-          "plan_source": "Automatic uses NeonPlan 3D when it is loaded, otherwise the own floor plan.",
           "thin_db": "Damping of walls thinner than 10 cm.",
           "hold_time": "How long a room stays occupied after the last valid detection.",
           "echo_window": "How soon after a neighbour sensor an echo can follow.",
@@ -32,13 +30,10 @@
       }
     }
   },
-  "selector": {
-    "plan_source": {
-      "options": {
-        "auto": "Automatic",
-        "neonplan": "NeonPlan 3D",
-        "own": "Own floor plan"
-      }
+  "issues": {
+    "import_neonplan": {
+      "title": "Import your NeonPlan floor plan",
+      "description": "Presence Planner no longer reads NeonPlan 3D live. Open NeonPlan 3D, export the floor plan or a backup as a file, then open the Presence Planner panel and choose **Import**. Your sensors and settings come back with it."
     }
   },
   "entity": {

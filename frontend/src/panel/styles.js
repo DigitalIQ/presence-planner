@@ -41,7 +41,6 @@ export const panelStyles = css`
   .top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
   .top h1 { margin: 0; font-size: 22px; font-weight: 400; }
   .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--pp-line); color: var(--pp-muted); white-space: nowrap; }
-  .badge.np { border-color: var(--pp-accent); color: var(--pp-accent); }
   .badge.warn { border-color: var(--pp-warn); color: var(--pp-warn); }
   .status { flex: 1 1 200px; min-width: 0; color: var(--pp-muted); font-size: 13px; }
   .status.err { color: var(--pp-error); }

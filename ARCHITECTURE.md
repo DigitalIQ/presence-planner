@@ -48,7 +48,7 @@ Metres. Plan view: `x` to the right, `z` down the plan (top of the drawing to th
 
 ## Plan schema `pp-plan` (version 1)
 
-A subset of the NeonPlan 3D building format, so the NeonPlan adapter is a near pass-through and the editor can export the NeonPlan import format.
+A subset of the NeonPlan 3D building format, so a NeonPlan file imports almost unchanged and the editor can export the NeonPlan import format.
 
 ```json
 {
@@ -88,7 +88,7 @@ Furniture: `rotation` clockwise in degrees, `w` along the front, `d` depth. Foot
 
 `mount`: `wall` | `corner` | `ceiling`. `fov_h`, `fov_v`, `reach` start from the profile and may be overridden. `active: false` keeps a sensor out of the calculation.
 
-NeonPlan mapping (when NeonPlan is the plan source): placement `x`, `z`, `y` = `height`, `rotation = (phi − 90) mod 360`, `tilt` = `tilt`, `fov` = `fov_h`, `reach` = `reach`. `profile`, `mount`, `fov_v` live in the presence_planner store, keyed by `entity_id`. Only those NeonPlan fields are ever written.
+NeonPlan mapping (when a NeonPlan file is imported): placement `x`, `z`, `y` = `height`, `rotation = (phi − 90) mod 360`, `tilt` = `tilt`, `fov` = `fov_h`, `reach` = `reach`. `profile`, `mount`, `fov_v` come from the presence_planner store when 0.1.x saved them there. Presence Planner never writes NeonPlan data.
 
 ## Sensor profiles `shared/profiles.json`
 
@@ -133,17 +133,16 @@ The JS core must reproduce the golden results within 2 percentage points for sha
 
 ## Integration (Python, `custom_components/presence_planner/`)
 
-- Config flow, one entry. Options: plan source (`auto` → NeonPlan if loaded, else own plan; `neonplan`; `own`), `thin_db`, `hold_time` (s, default 30), `echo_window` (s, default 5), `spill_threshold` (default 0.05).
-- Store `.storage/presence_planner`: `{ "plan": pp-plan | null, "sensors": { entity_id: {profile, mount, fov_v, ... own fields} }, "own_sensors": [pp-sensor] }`.
-- NeonPlan-Adapter: liest und schreibt über das interne Laufzeitobjekt und dessen Signal (`storage.py`, `websocket.py`). Prüft Struktur und aufrufbare Methoden, keine Versionsspanne. Inkompatible Struktur oder unsicherer normalisierter Plan führt zu `neonplan_incompatible` und dem eigenen Plan als Fallback. Schema-Validierung erfolgt, wenn das geladene NeonPlan-Schemamodul verfügbar ist. Planner-Schreiboperationen sind serialisiert; eigene Extras werden erst nach erfolgreichem NeonPlan-Save übernommen. Scheitert danach der eigene Store, wird die vorige NeonPlan-Kopie zurückgeschrieben. Ein gleichzeitiger Ausfall beider Speicherpfade bleibt ein Betriebsfehler, keine zugesicherte verteilte Transaktion.
+- Config flow, one entry (config entry 1.2). Options: `thin_db`, `hold_time` (s, default 30), `echo_window` (s, default 5), `spill_threshold` (default 0.05). Migration 1.1 → 1.2 drops the former `plan_source` option; an entry that used NeonPlan as source gets `neonplan_import: true` in its data and the repair issue `import_neonplan` until it has an own plan. Without any saved plan the room entities are kept.
+- Store `.storage/presence_planner`: `{ "plan": pp-plan | null, "sensors": { entity_id: {profile, mount, fov_v, ...} }, "own_sensors": [pp-sensor] }`. `sensors` holds the extras that 0.1.x saved while NeonPlan was the source; it is read only and fills in the placements of an imported NeonPlan file.
+- NeonPlan: no runtime access. Presence Planner neither reads `hass.data` of NeonPlan nor its modules, and never writes NeonPlan's data. `neonplan.py` only converts an imported NeonPlan building or backup file into a pp-plan and own sensors; `export.py` handles NeonPlan's documented import format.
 - WebSocket commands (all need auth, writes need admin):
-  - `presence_planner/get` → `{ source, revision, plan, sensors: [pp-sensor], profiles, options, neonplan: {installed, version, linked} }`
+  - `presence_planner/get` → `{ revision, plan, sensors: [pp-sensor], profiles, options }`
   - `presence_planner/subscribe` → events `{ revision }` on plan or sensor changes
-  - `presence_planner/save_sensors` `{ sensors: [pp-sensor] }` → writes NeonPlan fields or own store
+  - `presence_planner/save_sensors` `{ sensors: [pp-sensor] }` → replaces the own sensors
   - `presence_planner/save_plan` `{ plan }` → own plan only
   - `presence_planner/export` → NeonPlan-Austauschformat (`format: "neonplan-import"`, `rooms_at: "centre"`) mit `presence_planner: {version: 1, plan: pp-plan, sensors: [...]}`. Sensoren tragen `floor_index`. Der vollständige native Plan erhält Zuordnungen und Metadaten; NeonPlan ignoriert die Zusatzdaten.
   - `presence_planner/import` `{ data }` → ersetzt eigenen Plan und Sensorliste gemeinsam, auch eine leere Liste. Akzeptiert native Zusatzdaten, NeonPlan-Austauschdaten oder ein NeonPlan-Building. Ungültige native Sensorbestände werden vollständig abgewiesen.
-  - `presence_planner/link_neonplan` → adds a NeonPlan menu button `{id: "presence_planner", label, icon: "radar", action: "navigate", target: "/presence-planner"}`; only on this explicit call
   - `presence_planner/device_profiles` → suggested profile per sensor entity from the device registry
 - Panel: sidebar entry "Presence Planner" at `/presence-planner`, web component `presence-planner-panel`, bundle served from `custom_components/presence_planner/frontend/`.
 - Entities per room (has_entity_name, translation keys, unique_id `{entry_id}_{floor_id}_{room_id}_{key}`): `sensor` coverage % (mean over the three heights), `sensor` misfire risk %, `binary_sensor` occupancy (cleaned). Attributes carry per-height values. Recomputed in an executor on plan or sensor changes; door contacts only affect the cleaned occupancy.

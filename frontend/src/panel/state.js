@@ -76,7 +76,6 @@ export function initialState() {
   return {
     loading: true,
     error: null,
-    source: null,
     revision: null,
     plan: null,
     editPlan: null,
@@ -85,7 +84,6 @@ export function initialState() {
     sensors: [],
     profiles: null,
     options: {},
-    neonplan: { installed: false, version: null, linked: false },
     deviceProfiles: {},
     floorId: null,
     selected: null,
@@ -116,7 +114,6 @@ export function applyLoad(state, res) {
     ...state,
     loading: false,
     error: null,
-    source: res.source || "own",
     revision: res.revision === undefined ? null : res.revision,
     plan,
     editPlan: clone(plan),
@@ -125,13 +122,11 @@ export function applyLoad(state, res) {
     sensors,
     profiles: res.profiles || state.profiles,
     options: opt,
-    neonplan: { installed: false, version: null, linked: false, ...(res.neonplan || {}) },
     floorId,
     selected,
     dirty: false,
     remoteChanged: false,
     thinDb: typeof opt.thin_db === "number" && !state.thinTouched ? opt.thin_db : state.thinDb,
-    tab: res.source === "neonplan" && state.tab === "editor" ? "planner" : state.tab,
   };
 }
 
@@ -329,11 +324,6 @@ export function colorIndex(state, entityId, paletteSize) {
   const i = state.sensors.findIndex((s) => s.entity_id === entityId);
   return i < 0 ? 0 : i % paletteSize;
 }
-
-/** Whether the "Link in NeonPlan" button is offered. */
-export const canLinkNeonplan = (state) => !!(state.neonplan && state.neonplan.installed && !state.neonplan.linked);
-/** The editor exists only for the own plan. */
-export const editorAvailable = (state) => state.source === "own";
 
 /** Default optimizer target: the selected sensor if it is in the room, else the first sensor in the room. */
 export function optimizerTarget(state, roomId, roomOf) {
