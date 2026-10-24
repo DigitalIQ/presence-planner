@@ -107,7 +107,7 @@ export function buildModel(plan, floorId) {
     segments.push({ a: s.a, b: s.b, k, t, shared });
   }
   for (const s of subs) {
-    if (s.noWall) continue;
+    if (s.wallT <= 0) continue; // as in Python: one no-wall piece removes the whole shared wall, faces included
     const off = s.shared ? s.wallT / 2 : 0;
     faces.push({
       a: [s.a[0] + s.n[0] * off, s.a[1] + s.n[1] * off], b: [s.b[0] + s.n[0] * off, s.b[1] + s.n[1] * off],

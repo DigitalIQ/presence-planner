@@ -74,3 +74,12 @@ test("backend error codes map to their own messages", () => {
   }
   assert.deepEqual(normaliseDeviceProfiles({ suggestions: { "binary_sensor.a": { profile: "aqara_fp300", device: "Aqara FP300" } } }), { "binary_sensor.a": "aqara_fp300" });
 });
+
+test("exportPlan sends the plan only when one is given", async () => {
+  const conn = fakeConnection(() => ({ ok: true }));
+  const c = new PlannerClient(conn);
+  await c.exportPlan();
+  await c.exportPlan({ version: 1, floors: [] });
+  assert.equal("plan" in conn.sent[0], false);
+  assert.deepEqual(conn.sent[1].plan, { version: 1, floors: [] });
+});

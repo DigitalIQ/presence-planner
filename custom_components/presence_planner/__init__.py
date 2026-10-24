@@ -6,14 +6,15 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN, ENTITY_KEYS, ISSUE_IMPORT_NEONPLAN
+from .const import DOMAIN, ENTITY_KEYS, ISSUE_IMPORT_NEONPLAN, ISSUE_STORED_DATA_REJECTED
 from .coordinator import PresencePlannerCoordinator
 from .panel import async_register_panel, async_remove_panel
-from .store import PresencePlannerStore
+from .store import PresencePlannerStore, async_has_sensor_extras
 from .websocket import async_register_commands
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
@@ -30,13 +31,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: PresencePlannerConfigEntry) -> bool:
-    """1.1 -> 1.2: the NeonPlan plan source is gone; such entries are asked to import a NeonPlan file once."""
+    """1.1 -> 1.2: the NeonPlan plan source is gone; entries that used it are asked to import a NeonPlan file once.
+
+    `auto` used NeonPlan only when it was installed. The sensor extras in the store exist only if it was the live
+    source (0.1.x saved them there then), so they tell the two apart.
+    """
     if entry.version > 1:
         return False
     if entry.minor_version < 2:
         options = dict(entry.options)
         source = options.pop("plan_source", "auto")
-        data = {**entry.data, "neonplan_import": True} if source != "own" else dict(entry.data)
+        used_neonplan = source == "neonplan" or (source != "own" and await async_has_sensor_extras(hass))
+        data = {**entry.data, "neonplan_import": True} if used_neonplan else dict(entry.data)
         hass.config_entries.async_update_entry(entry, data=data, options=options, minor_version=2)
     return True
 
@@ -88,6 +94,27 @@ def _remove_stale_entities(
     for reg_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
         if reg_entry.unique_id not in wanted:
             registry.async_remove(reg_entry.entity_id)
+    # floor devices of floors that are gone (the entities above were their last members)
+    devices = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(devices, entry.entry_id):
+        if not _is_current_floor(entry, coordinator, device):
+            devices.async_update_device(device.id, remove_config_entry_id=entry.entry_id)
+
+
+def _is_current_floor(
+    entry: PresencePlannerConfigEntry, coordinator: PresencePlannerCoordinator, device: dr.DeviceEntry
+) -> bool:
+    """Whether the device belongs to a floor of the current plan."""
+    floors = {f"{entry.entry_id}_{floor_id}" for floor_id, *_ in coordinator.room_keys}
+    return any(domain == DOMAIN and identifier in floors for domain, identifier in device.identifiers)
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: PresencePlannerConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """Let the user delete a floor device only when its floor is no longer in the plan."""
+    coordinator = getattr(entry, "runtime_data", None)
+    return coordinator is None or not _is_current_floor(entry, coordinator, device_entry)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: PresencePlannerConfigEntry) -> bool:
@@ -103,5 +130,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: PresencePlannerConfigEn
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: PresencePlannerConfigEntry) -> None:
-    """The entry is deleted: remove the panel."""
+    """The entry is deleted: remove the panel and the repair issues."""
     async_remove_panel(hass)
+    for issue_id in (ISSUE_IMPORT_NEONPLAN, ISSUE_STORED_DATA_REJECTED):
+        ir.async_delete_issue(hass, DOMAIN, issue_id)

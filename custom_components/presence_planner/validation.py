@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 MAX_GRID_WORK = 100_000
 MAX_PLAN_WORK = 500_000
 MAX_WEIGHTED_WORK = 20_000_000
+# Ray casting work of all sensors over all floors (see kernel_work). A plan at the limit takes a few seconds.
+MAX_KERNEL_WORK = 150_000_000
+
+# furniture that never damps a ray (core/model.py NON_OBSTACLE_TYPES)
+_NON_OBSTACLES = ("led_strip", "shower", "plant", "rug", "coat_rack")
+_ENTITY_ID = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 
 
 class PlanValidationError(ValueError):
@@ -94,6 +101,59 @@ def grid_work(rooms: list[dict], step: float) -> int:
     return work
 
 
+def _entity_id(value: Any) -> None:
+    if not isinstance(value, str) or len(value) > 255 or not _ENTITY_ID.match(value):
+        raise PlanValidationError("invalid_entity_id")
+
+
+def _blocks_rays(item: dict, tall_wall: bool) -> bool:
+    """A free wall of 1.5 m or more, or a piece of furniture that damps rays (same rule as the model)."""
+    if tall_wall:
+        return item.get("height") is None or item["height"] >= 1.5
+    kind = str(item.get("type", ""))
+    return (item.get("h") or 0) >= 1.5 and not kind.startswith("lamp") and kind not in _NON_OBSTACLES
+
+
+def kernel_weight(floor: dict) -> int:
+    """Cost of one cell and sensor in the ray caster, relative to an empty room (64).
+
+    Room edges and door cuts are tested against the ray of each cell; tall free walls and tall furniture cost
+    much more (a polygon clip), low walls and low furniture do not take part in the ray.
+    """
+    vertices = sum(len(r["points"]) for r in floor.get("rooms") or [])
+    walls = floor.get("walls") or []
+    furniture = floor.get("furniture") or []
+    tall_walls = sum(_blocks_rays(w, True) for w in walls)
+    obstacles = sum(_blocks_rays(f, False) for f in furniture)
+    return (
+        64
+        + vertices
+        + 4 * len(floor.get("openings") or [])
+        + 8 * tall_walls
+        + (len(walls) - tall_walls)
+        + 16 * obstacles
+        + (len(furniture) - obstacles)
+    )
+
+
+def _sensor_cells(sensor: dict, cells: int) -> int:
+    """Cells (0.1 m) that can reach the ray caster: those within the reach and the horizontal field of view."""
+    reach, fov = sensor.get("reach"), sensor.get("fov_h")
+    # an unresolved value comes from a profile: assume the worst
+    reach = 100 if not isinstance(reach, (int, float)) or isinstance(reach, bool) else max(0, reach)
+    fov = 360 if not isinstance(fov, (int, float)) or isinstance(fov, bool) or sensor.get("mount") == "ceiling" else fov
+    return min(cells, math.ceil(100 * math.pi * reach * reach * min(max(fov, 0), 360) / 360))
+
+
+def kernel_work(floor: dict, sensors: list[dict]) -> int:
+    """Ray casting work of the sensors of one floor at the standard grid (0.1 m).
+
+    Every cell inside a sensor's reach and field of view is cast against every wall, door cut and obstacle.
+    """
+    cells = grid_work(floor.get("rooms") or [], 0.1)
+    return (sum(_sensor_cells(s, cells) for s in sensors) or cells) * kernel_weight(floor)
+
+
 def validate_plan(plan: Any) -> dict:
     """Validate normalized pp-plan geometry; return it unchanged for schema use."""
     bounded_data(plan)
@@ -172,6 +232,11 @@ def validate_plan(plan: Any) -> dict:
             for key in ("offset", "width"):
                 if _number(opening.get(key)) < 0:
                     raise PlanValidationError(f"invalid_{key}")
+            # the door contact feeds sets in the cleaned occupancy: a stored object there would break every room
+            if opening.get("contact") is not None:
+                _entity_id(opening["contact"])
+            if opening.get("contact_invert") is not None and not isinstance(opening["contact_invert"], bool):
+                raise PlanValidationError("invalid_contact_invert")
         for item in furniture:
             if not isinstance(item.get("type"), str):
                 raise PlanValidationError("invalid_furniture_type")
@@ -187,6 +252,16 @@ def validate_plan(plan: Any) -> dict:
         if total_work > MAX_PLAN_WORK or weighted > MAX_WEIGHTED_WORK:
             raise PlanValidationError("plan_budget_exceeded")
     return plan
+
+
+def sensors_on_floors(sensors: list[Any], plan: dict) -> list[Any]:
+    """The sensors whose floor exists in the plan; entries that are no records stay for validation to reject."""
+    floor_ids = {floor["id"] for floor in plan["floors"]}
+    return [
+        s
+        for s in sensors
+        if not isinstance(s, dict) or (isinstance(s.get("floor_id"), str) and s["floor_id"] in floor_ids)
+    ]
 
 
 def validate_sensors(sensors: Any, plan: dict | None = None) -> None:
@@ -205,9 +280,13 @@ def validate_sensors(sensors: Any, plan: dict | None = None) -> None:
             if sensor.get(key) is not None:
                 _number(sensor[key], 1_000_000 if key == "phi" else 1000)
     if plan:
+        floor_ids = {floor["id"] for floor in plan["floors"]}
+        work = 0
+        for sensor in sensors:
+            if not isinstance(sensor.get("floor_id"), str) or sensor["floor_id"] not in floor_ids:
+                raise PlanValidationError("sensor_floor_missing")
         for floor in plan["floors"]:
-            count = sum(s.get("floor_id") == floor["id"] for s in sensors)
-            rooms = floor.get("rooms") or []
-            weight = sum(len(r["points"]) for r in rooms) + 1
-            if grid_work(rooms, 0.1) * max(1, count) * weight > MAX_WEIGHTED_WORK:
+            active = [s for s in sensors if s.get("floor_id") == floor["id"] and s.get("active") is not False]
+            work += kernel_work(floor, active)
+            if work > MAX_KERNEL_WORK:
                 raise PlanValidationError("sensor_work_budget_exceeded")

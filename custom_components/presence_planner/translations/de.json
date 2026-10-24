@@ -34,6 +34,10 @@
     "import_neonplan": {
       "title": "NeonPlan-Grundriss importieren",
       "description": "Presence Planner liest NeonPlan 3D nicht mehr live. Exportiere in NeonPlan 3D den Grundriss oder ein Backup als Datei, öffne dann das Presence-Planner-Panel und wähle **Importieren**. Deine Sensoren und Einstellungen kommen dabei mit."
+    },
+    "stored_data_rejected": {
+      "title": "Gespeicherter Grundriss oder Sensoren abgelehnt",
+      "description": "Presence Planner konnte den früher gespeicherten Grundriss oder die Sensorliste nicht verwenden, etwa weil sie die aktuellen Grenzen überschreiten. Die Daten liegen unverändert in der Speicherdatei, werden aber nicht benutzt. Ein neuer Grundriss oder neue Sensoren, im Panel gespeichert, oder ein Import ersetzen den abgelehnten Teil. Den Grund nennt das Home-Assistant-Protokoll."
     }
   },
   "entity": {

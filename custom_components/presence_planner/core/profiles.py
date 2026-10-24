@@ -38,10 +38,12 @@ def resolve_sensor(sensor: dict, profiles: dict) -> dict:
 
     Only missing (absent or ``None``) fields are filled, so explicit overrides win.  A profile without a
     vertical field of view gets ``profiles["default_fov_v"]`` and ``fov_v_assumed: True``.  For a ceiling
-    mount the profile's ``ceiling`` block (``fov``, ``reach``) is used when present and its ``fov`` is
-    stored as ``ceiling_fov`` (the cone opening angle used by ``detect``).
+    mount the profile's ``ceiling`` block (``fov``, ``reach``) is used when present; the cone opening angle
+    used by ``detect`` (``ceiling_fov``) is then the resulting ``fov_h``, so an explicit ``fov_h`` wins.  A
+    ``ceiling_fov`` that came in with the sensor is a stale resolved value and is dropped.
     """
     out = dict(sensor)
+    out.pop("ceiling_fov", None)
     prof = find_profile(profiles, out.get("profile"))
     if out.get("mount") is None:
         mounts = prof.get("mounts") or ["wall"]
@@ -58,8 +60,8 @@ def resolve_sensor(sensor: dict, profiles: dict) -> dict:
             out["fov_v_assumed"] = True
         else:
             out["fov_v"] = fov_v
-    if ceiling and out.get("ceiling_fov") is None:
-        out["ceiling_fov"] = ceiling["fov"]
+    if ceiling:
+        out["ceiling_fov"] = out["fov_h"]
     if out.get("tilt") is None:
         out["tilt"] = 90 if out["mount"] == "ceiling" else 0
     if out.get("active") is None:

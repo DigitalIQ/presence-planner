@@ -18,6 +18,7 @@ export function resolveSensor(sensor, profiles = PROFILES) {
   const list = profiles.profiles || [];
   const prof = list.find((x) => x.id === sensor.profile) || list.find((x) => x.id === "custom") || list[0];
   const out = { ...sensor };
+  delete out.ceiling_fov; // a stale resolved value; the cone follows fov_h (same as resolve_sensor in Python)
   if (out.mount == null) out.mount = (prof.mounts && prof.mounts[0]) || "wall";
   const ceiling = out.mount === "ceiling" ? prof.ceiling : null;
   if (out.fov_h == null) out.fov_h = ceiling ? ceiling.fov : prof.fov_h;
@@ -26,7 +27,7 @@ export function resolveSensor(sensor, profiles = PROFILES) {
     if (prof.fov_v == null) { out.fov_v = profiles.default_fov_v ?? 90; out.fov_v_assumed = true; }
     else out.fov_v = prof.fov_v;
   }
-  if (ceiling && out.ceiling_fov == null) out.ceiling_fov = ceiling.fov;
+  if (ceiling) out.ceiling_fov = out.fov_h;
   if (out.tilt == null) out.tilt = out.mount === "ceiling" ? 90 : 0;
   if (out.active == null) out.active = true;
   return out;

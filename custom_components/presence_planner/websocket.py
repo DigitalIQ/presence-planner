@@ -164,32 +164,38 @@ async def ws_save_plan(hass: HomeAssistant, connection: websocket_api.ActiveConn
     connection.send_result(msg["id"], {"revision": await _after_write(hass, coordinator)})
 
 
+def _build_export(plan: dict[str, Any], raw_sensors: list[dict[str, Any]]) -> dict[str, Any]:
+    """The NeonPlan import format with the native plan and sensors attached (CPU work, runs in the executor)."""
+    validate_plan(plan)
+    data = to_neonplan_import(plan)
+    # The import format has no sensors. They travel in an extra key that NeonPlan ignores, keyed by floor index
+    # because the import format carries no floor ids.
+    floor_index = {f["id"]: i for i, f in enumerate(plan.get("floors") or [])}
+    sensors = [
+        {**{k: s[k] for k in _EXPORT_SENSOR_KEYS if s.get(k) is not None}, "floor_index": floor_index[s["floor_id"]]}
+        for s in raw_sensors
+        if s.get("floor_id") in floor_index
+    ]
+    data[EXPORT_SENSORS_KEY] = {"version": 1, "plan": copy.deepcopy(plan), "sensors": sensors}
+    return data
+
+
 @websocket_api.websocket_command({vol.Required("type"): "presence_planner/export", vol.Optional("plan"): PLAN_SCHEMA})
 @websocket_api.async_response
 async def ws_export(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
-    """The given plan, else the own plan, in the NeonPlan import format."""
+    """The own plan, in the NeonPlan import format. Admins may pass an unsaved plan of the editor instead."""
     if (coordinator := _coordinator(hass, connection, msg)) is None:
         return
-    plan = msg.get("plan") or coordinator.store.plan
+    # validating and converting a supplied plan is CPU work that only admins (who may write plans anyway) trigger
+    plan = (msg.get("plan") if connection.user.is_admin else None) or coordinator.store.plan
     if not plan:
         connection.send_error(msg["id"], "no_plan", "There is no plan to export")
         return
     try:
-        validate_plan(plan)
-        data = to_neonplan_import(plan)
+        data = await hass.async_add_executor_job(_build_export, plan, copy.deepcopy(coordinator.store.own_sensors))
     except PlanValidationError as err:
         connection.send_error(msg["id"], "invalid_plan", str(err))
         return
-    # The import format has no sensors. They travel in an extra key that NeonPlan ignores, keyed by floor index
-    # because the import format carries no floor ids.
-    floor_index = {f["id"]: i for i, f in enumerate(plan.get("floors") or [])}
-    raw = coordinator.store.own_sensors
-    sensors = [
-        {**{k: s[k] for k in _EXPORT_SENSOR_KEYS if s.get(k) is not None}, "floor_index": floor_index[s["floor_id"]]}
-        for s in raw
-        if s.get("floor_id") in floor_index
-    ]
-    data[EXPORT_SENSORS_KEY] = {"version": 1, "plan": copy.deepcopy(plan), "sensors": sensors}
     connection.send_result(msg["id"], data)
 
 
@@ -229,7 +235,7 @@ async def ws_import(hass: HomeAssistant, connection: websocket_api.ActiveConnect
         return
     try:
         exported = _exported_sensors(msg["data"], plan, warnings) if building is None else []
-        sensors = await coordinator.async_import(plan, building, exported)
+        sensors = await coordinator.async_import(plan, building, exported, warnings)
     except (PlanValidationError, ImportFormatError) as err:
         connection.send_error(msg["id"], "invalid_format", str(err))
         return

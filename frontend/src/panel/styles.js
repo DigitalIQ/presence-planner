@@ -64,6 +64,7 @@ export const panelStyles = css`
   .banner { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; border-radius: var(--pp-radius); background: var(--pp-warn); color: #fff; font-size: 13px; }
   .banner.err { background: var(--pp-error); }
   .banner button { color: #fff; border-color: #fff; }
+  .banner ul { margin: 0; padding-left: 18px; flex-basis: 100%; }
 
   /* Tabs */
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--pp-line); }

@@ -1,6 +1,8 @@
 // Same limits as presence_planner/validation.py. Count candidate work before any allocation.
 export const MAX_GRID_WORK = 100000;
 export const MAX_WEIGHTED_WORK = 20000000;
+export const MAX_KERNEL_WORK = 150000000;
+const ENTITY_ID = /^[a-z0-9_]+\.[a-z0-9_]+$/;
 const reject = (reason) => { throw new Error(reason); };
 const number = (v) => { if (typeof v !== "number" || !Number.isFinite(v) || Math.abs(v) > 1000) reject("invalid_number"); return v; };
 const point = (p) => { if (!Array.isArray(p) || p.length !== 2) reject("invalid_point"); p.forEach(number); };
@@ -20,6 +22,60 @@ export function gridWork(rooms, step) {
     if (work > MAX_GRID_WORK) reject("grid_budget_exceeded");
   }
   return work;
+}
+
+const NON_OBSTACLES = ["led_strip", "shower", "plant", "rug", "coat_rack"];
+const tallWall = (w) => w.height == null || w.height >= 1.5;
+const obstacle = (f) => {
+  const kind = String(f.type ?? "");
+  return (f.h || 0) >= 1.5 && !kind.startsWith("lamp") && !NON_OBSTACLES.includes(kind);
+};
+
+/** Cost of one cell and sensor in the ray caster, relative to an empty room (64). Same as kernel_weight in Python. */
+export function kernelWeight(floor) {
+  const walls = floor.walls || [], furniture = floor.furniture || [];
+  const vertices = (floor.rooms || []).reduce((n, r) => n + r.points.length, 0);
+  const tall = walls.filter(tallWall).length, obstacles = furniture.filter(obstacle).length;
+  return 64 + vertices + 4 * (floor.openings || []).length + 8 * tall + (walls.length - tall) + 16 * obstacles + (furniture.length - obstacles);
+}
+
+// Cells (0.1 m) that can reach the ray caster: those within the reach and the horizontal field of view.
+// An unresolved value comes from a profile: assume the worst.
+const sensorCells = (s, cells) => {
+  const reach = typeof s.reach === "number" ? Math.max(0, s.reach) : 100;
+  const fov = typeof s.fov_h === "number" && s.mount !== "ceiling" ? s.fov_h : 360;
+  return Math.min(cells, Math.ceil(100 * Math.PI * reach * reach * Math.min(Math.max(fov, 0), 360) / 360));
+};
+
+/** Ray casting work of the sensors of one floor at the standard grid (0.1 m). Same as kernel_work in Python. */
+export function kernelWork(floor, sensors) {
+  const cells = gridWork(floor.rooms || [], 0.1);
+  return (sensors.reduce((n, s) => n + sensorCells(s, cells), 0) || cells) * kernelWeight(floor);
+}
+
+/** Same checks as validate_sensors in Python: bounded sensor data, known floors and the ray casting budget. */
+export function validateSensors(sensors, plan = null) {
+  if (!Array.isArray(sensors) || sensors.length > 64) reject("too_many_sensors");
+  const ids = new Set();
+  for (const s of sensors) {
+    if (!s || typeof s !== "object" || typeof s.entity_id !== "string") reject("invalid_sensor");
+    if (ids.has(s.entity_id)) reject("duplicate_sensor");
+    ids.add(s.entity_id);
+    for (const k of ["x", "z", "height", "phi", "tilt", "reach", "fov_h", "fov_v"]) {
+      if (s[k] == null) continue;
+      if (typeof s[k] !== "number" || !Number.isFinite(s[k]) || Math.abs(s[k]) > (k === "phi" ? 1000000 : 1000)) reject("invalid_number");
+    }
+  }
+  if (plan && plan.floors) {
+    const floorIds = new Set(plan.floors.map((f) => f.id));
+    if (sensors.some((s) => typeof s.floor_id !== "string" || !floorIds.has(s.floor_id))) reject("sensor_floor_missing");
+    let work = 0;
+    for (const f of plan.floors) {
+      work += kernelWork(f, sensors.filter((s) => s.floor_id === f.id && s.active !== false));
+      if (work > MAX_KERNEL_WORK) reject("sensor_work_budget_exceeded");
+    }
+  }
+  return sensors;
 }
 
 export function validatePlan(plan) {
@@ -79,6 +135,8 @@ export function validatePlan(plan) {
         if (!r || !Number.isInteger(o.edge) || o.edge < 0 || o.edge >= r.points.length) reject("invalid_opening_room_edge");
       }
       for (const k of ["offset", "width"]) if (number(o[k]) < 0) reject(`invalid_${k}`);
+      if (o.contact != null && (typeof o.contact !== "string" || o.contact.length > 255 || !ENTITY_ID.test(o.contact))) reject("invalid_entity_id");
+      if (o.contact_invert != null && typeof o.contact_invert !== "boolean") reject("invalid_contact_invert");
     }
     for (const item of furniture) {
       if (typeof item.type !== "string") reject("invalid_furniture_type");

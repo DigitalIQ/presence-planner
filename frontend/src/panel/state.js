@@ -130,12 +130,38 @@ export function applyLoad(state, res) {
   };
 }
 
-/** A subscription event arrived. Reload unless the user has unsaved changes. */
-export function onRemoteRevision(state, revision) {
-  if (revision !== undefined && revision === state.revision) return { state, reload: false };
+/**
+ * A subscription event arrived. Reload unless the user has unsaved changes.
+ * Events are never dropped by revision: the backend counter lives in memory and restarts at 0
+ * after an HA restart or an entry reload, so an equal number does not mean "nothing changed".
+ * The panel's own saves are filtered by the caller (`_saving`).
+ */
+export function onRemoteRevision(state) {
   if (state.dirty || state.planDirty) return { state: { ...state, remoteChanged: true }, reload: false };
   return { state, reload: true };
 }
+
+/** A plan exists on the server or is being drawn locally (then `plan`, the saved baseline, stays null). */
+export const hasPlan = (state) => !!(state.plan || state.editPlan);
+
+/**
+ * The server answered while the user edited: keep the edits, take only profiles and options, and offer the
+ * reload banner. No banner when the server has no plan and none was known (a plan drawn during the first load).
+ */
+export function keepEdits(state, res) {
+  const remote = !!((res && res.plan) || state.plan);
+  return {
+    ...state,
+    loading: false,
+    error: null,
+    profiles: (res && res.profiles) || state.profiles,
+    options: (res && res.options) || state.options,
+    remoteChanged: state.remoteChanged || remote,
+  };
+}
+
+/** True when sensors or plan were edited since `snap` (an earlier state; edits always create new objects). */
+export const editedSince = (state, snap) => state.sensors !== snap.sensors || state.editPlan !== snap.editPlan;
 
 export const floorOf = (state) => ((state.editPlan && state.editPlan.floors) || []).find((f) => f.id === state.floorId) || null;
 export const sensorsOnFloor = (state) => state.sensors.filter((s) => s.floor_id === state.floorId);
@@ -223,13 +249,42 @@ export function resetChanges(state) {
   return { ...state, sensors, floorId, editPlan, dirty: false, planDirty: false, selected };
 }
 
+/**
+ * Takes an edited plan. Sensors on a floor that no longer exists would be invisible and could not
+ * be removed any more, so they are dropped and the sensor list counts as changed.
+ */
 export function setEditPlan(state, plan) {
-  return { ...state, editPlan: plan, planDirty: true };
+  const ids = new Set(((plan && plan.floors) || []).map((f) => f.id));
+  const kept = state.sensors.filter((s) => ids.has(s.floor_id));
+  if (kept.length === state.sensors.length) return { ...state, editPlan: plan, planDirty: true };
+  const selected = kept.some((s) => s.entity_id === state.selected) ? state.selected : null;
+  return { ...state, editPlan: plan, planDirty: true, sensors: kept, selected, dirty: true };
 }
 
-/** After a successful save_sensors. */
-export function markSaved(state, revision) {
-  return { ...state, savedSensors: clone(state.sensors), dirty: false, revision: revision === undefined ? state.revision : revision };
+/**
+ * After a successful save. `sent` names what the request carried (`{ sensors, plan }`, each optional):
+ * exactly that becomes the saved baseline, and edits made while the request was in flight stay dirty.
+ * Without `sent` the current sensors count as saved.
+ */
+export function markSaved(state, revision, sent) {
+  const next = { ...state, revision: revision === undefined ? state.revision : revision };
+  if (!sent) return { ...next, savedSensors: clone(state.sensors), dirty: false };
+  if (sent.sensors) {
+    next.savedSensors = clone(sent.sensors);
+    next.dirty = state.sensors !== sent.sensors;
+  }
+  if (sent.plan) {
+    next.plan = clone(sent.plan);
+    next.planDirty = state.editPlan !== sent.plan;
+  }
+  return next;
+}
+
+/** Groups import warning codes: `[{ code, count }]` in order of first appearance. */
+export function groupWarnings(warnings) {
+  const counts = new Map();
+  for (const w of Array.isArray(warnings) ? warnings : []) counts.set(String(w), (counts.get(String(w)) || 0) + 1);
+  return [...counts].map(([code, count]) => ({ code, count }));
 }
 
 /** Payload for save_sensors: every sensor of every floor, rounded. */
@@ -238,6 +293,7 @@ export function sensorsForSave(state) {
     const out = { ...s };
     for (const k of Object.keys(LIMITS)) if (typeof out[k] === "number") out[k] = cleanField(k, out[k]);
     delete out.fov_v_assumed;
+    delete out.ceiling_fov;
     return out;
   });
 }

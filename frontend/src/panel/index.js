@@ -4,6 +4,7 @@
 // and hosts <pp-view3d> and <pp-editor>.
 import { LitElement, html, nothing } from "lit";
 import { PROFILES, resolveSensor, buildModel, evaluate, optimize } from "../core/index.js";
+import { validateSensors } from "../core/validation.js";
 import "../view3d/index.js";
 import "../editor/index.js";
 import "./map2d.js";
@@ -33,6 +34,7 @@ export class PresencePlannerPanel extends LitElement {
     _busy: { state: true },
     _opt: { state: true },
     _addEntity: { state: true },
+    _importWarnings: { state: true },
   };
 
   static styles = panelStyles;
@@ -49,6 +51,8 @@ export class PresencePlannerPanel extends LitElement {
     this._addEntity = "";
     this._client = null;
     this._unsub = null;
+    this._subPending = null;
+    this._importWarnings = [];
     this._evalFast = false;
     this._contactSig = "";
     this._runner = new OptimizerRunner({
@@ -61,7 +65,11 @@ export class PresencePlannerPanel extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    if (this._client && !this._unsub) this._subscribe();
+    // Events that arrived while the panel was detached are lost: subscribe again and catch up.
+    if (this._client && !this._unsub && !this._subPending) {
+      this._subscribe();
+      this._resync();
+    }
   }
 
   disconnectedCallback() {
@@ -69,6 +77,7 @@ export class PresencePlannerPanel extends LitElement {
     this._unsubscribe();
     this._runner.cancel();
     cancelAnimationFrame(this._evalRaf);
+    clearTimeout(this._evalTimer);
   }
 
   willUpdate(changed) {
@@ -110,11 +119,16 @@ export class PresencePlannerPanel extends LitElement {
 
   /* ---------- data loading ---------- */
 
-  /** Loads plan and sensors; true on success. Retries while the integration reloads (`not_loaded`). */
+  /**
+   * Loads plan and sensors; true when the server answered. Retries while the integration reloads
+   * (`not_loaded`). If the user edited meanwhile, the answer is not applied: the edits stay and the
+   * "changed elsewhere" banner offers the reload.
+   */
   async _load() {
     if (!this._client) return false;
     this._busy = true;
     this._status = { key: "status.loading" };
+    const snap = this._s;
     try {
       let res;
       for (let attempt = 0; ; attempt++) {
@@ -126,7 +140,8 @@ export class PresencePlannerPanel extends LitElement {
           await new Promise((r) => setTimeout(r, 1000));
         }
       }
-      this._setState(S.applyLoad(this._s, res));
+      if (S.editedSince(this._s, snap)) this._setState(S.keepEdits(this._s, res));
+      else this._setState(S.applyLoad(this._s, res));
       this._status = null;
       return true;
     } catch (e) {
@@ -149,21 +164,37 @@ export class PresencePlannerPanel extends LitElement {
   }
 
   async _subscribe() {
-    if (!this._client || this._unsub) return;
+    if (!this._client || this._unsub || this._subPending) return;
+    // `_subPending` is the token of this attempt: _unsubscribe() clears it, so an answer that arrives
+    // after a disconnect or a new client is released right away instead of leaking.
+    const pending = this._client.subscribe((ev) => {
+      // our own save triggers these events too; save() loads the result itself afterwards
+      if (this._saving) return;
+      const { state, reload } = S.onRemoteRevision(this._s);
+      this._s = state;
+      if (reload) this._load();
+    });
+    this._subPending = pending;
     try {
-      this._unsub = await this._client.subscribe((ev) => {
-        // our own save triggers these events too; save() loads the result itself afterwards
-        if (this._saving) return;
-        const { state, reload } = S.onRemoteRevision(this._s, ev.revision);
-        this._s = state;
-        if (reload) this._load();
-      });
+      const unsub = await pending;
+      if (this._subPending !== pending) {
+        try {
+          unsub();
+        } catch (e) {
+          /* ignore */
+        }
+        return;
+      }
+      this._unsub = unsub;
     } catch (e) {
       /* without live updates the panel still works */
+    } finally {
+      if (this._subPending === pending) this._subPending = null;
     }
   }
 
   _unsubscribe() {
+    this._subPending = null;
     if (this._unsub) {
       try {
         this._unsub();
@@ -172,6 +203,21 @@ export class PresencePlannerPanel extends LitElement {
       }
     }
     this._unsub = null;
+  }
+
+  /** After a re-attach: reload when clean, otherwise only flag a change on the server. */
+  async _resync() {
+    if (!this._client || !S.hasPlan(this._s) || this._busy) return;
+    if (!this._s.dirty && !this._s.planDirty) {
+      this._load();
+      return;
+    }
+    try {
+      const res = await this._client.get();
+      if (res && res.revision !== this._s.revision) this._s = { ...this._s, remoteChanged: true };
+    } catch (e) {
+      /* the next explicit load reports problems */
+    }
   }
 
   /* ---------- state, model, evaluation ---------- */
@@ -204,16 +250,23 @@ export class PresencePlannerPanel extends LitElement {
     const floorId = this._s.floorId;
     if (!plan || !floorId) {
       this._model = null;
+      this._clearModelError();
       return;
     }
     try {
       this._model = buildModel(plan, floorId);
-      this._modelError = null;
+      this._clearModelError();
     } catch (e) {
       this._model = null;
       this._modelError = e;
       this._status = { key: "error.model", error: true, detail: e.message };
     }
+  }
+
+  /** A model error status disappears as soon as a rebuild or evaluation works again. */
+  _clearModelError() {
+    this._modelError = null;
+    if (this._status && this._status.key === "error.model") this._status = null;
   }
 
   _resolved(sensors) {
@@ -254,10 +307,13 @@ export class PresencePlannerPanel extends LitElement {
     }
     const opts = S.coreOptions(this._s, this.hass && this.hass.states, { fast });
     try {
+      // The same ray casting budget as the backend, so a plan the server refuses cannot freeze the browser either.
+      validateSensors(this._resolved(this._s.sensors), this._s.editPlan);
       const ev = evaluate(this._model, this._resolved(S.sensorsOnFloor(this._s)), opts);
       this._eval = { ...ev, cell: opts.cell, fast };
       // Statistics only from full evaluations, so the tables do not flicker while dragging.
       if (!fast) this._stats = this._eval;
+      this._clearModelError();
     } catch (e) {
       this._eval = null;
       this._status = { key: "error.model", error: true, detail: e.message };
@@ -333,7 +389,11 @@ export class PresencePlannerPanel extends LitElement {
     const next = { ...this._s, [key]: value };
     if (key === "thinDb") next.thinTouched = true;
     if (["height", "doorsMode", "thinDb"].includes(key)) this._setState(next, { fast });
-    else this._s = next;
+    else {
+      this._s = next;
+      // the weight is part of the optimizer context: a running or finished run no longer matches
+      if (key === "weight") this._invalidateOptimizer();
+    }
   }
 
   addSensor() {
@@ -359,17 +419,29 @@ export class PresencePlannerPanel extends LitElement {
     this._busy = true;
     this._saving = true;
     this._status = { key: "status.saving" };
+    // Send and mark exactly this snapshot. The map and the fields stay editable while the request runs;
+    // what the user changes meanwhile was never sent and stays unsaved.
+    const snap = this._s;
+    const sent = {};
     try {
-      if (this._s.planDirty) await this._client.savePlan(this._s.editPlan);
       let revision;
-      if (this._s.dirty) {
-        const res = await this._client.saveSensors(S.sensorsForSave(this._s));
+      if (snap.planDirty) {
+        const res = await this._client.savePlan(snap.editPlan);
         revision = res && res.revision;
-        this._s = S.markSaved(this._s, revision);
+        sent.plan = snap.editPlan;
       }
-      // _load sets its own error status when it fails; only a successful load confirms the save
-      if (await this._load()) this._status = { key: "status.saved" };
+      if (snap.dirty) {
+        const res = await this._client.saveSensors(S.sensorsForSave(snap));
+        revision = res && res.revision;
+        sent.sensors = snap.sensors;
+      }
+      this._s = S.markSaved(this._s, revision, sent);
+      // Edits made during the save would be wiped by a reload; they keep their dirty flag instead.
+      // _load sets its own error status when it fails; only a successful load confirms the save.
+      if (S.editedSince(this._s, snap) || (await this._load())) this._status = { key: "status.saved" };
     } catch (e) {
+      // what already went through (the plan, when only the sensors failed) is no longer unsaved
+      if (sent.plan || sent.sensors) this._s = S.markSaved(this._s, undefined, sent);
       const err = mapError(e);
       this._status = { key: err.i18nKey, error: true, detail: err.message };
     } finally {
@@ -389,7 +461,10 @@ export class PresencePlannerPanel extends LitElement {
 
   async exportPlan() {
     try {
-      const data = await this._client.exportPlan();
+      // The file comes from the server's saved plan. Unsaved plan edits go along as `plan` (admins only);
+      // sensors are always the saved ones, so unsaved changes of any kind are called out.
+      const withPlan = this._s.planDirty && this.isAdmin;
+      const data = await this._client.exportPlan(withPlan ? this._s.editPlan : undefined);
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -398,7 +473,7 @@ export class PresencePlannerPanel extends LitElement {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-      this._status = { key: "status.exported" };
+      this._status = { key: this._s.dirty || (this._s.planDirty && !withPlan) ? "status.exported_unsaved" : "status.exported" };
     } catch (e) {
       const err = mapError(e);
       this._status = { key: err.i18nKey, error: true, detail: err.message };
@@ -422,15 +497,19 @@ export class PresencePlannerPanel extends LitElement {
     }
     if ((this._s.dirty || this._s.planDirty || this._s.plan) && !window.confirm(this.t("import.confirm"))) return;
     this._busy = true;
+    this._saving = true; // the import's own events must not trigger a second load
+    this._importWarnings = [];
     try {
-      await this._client.importPlan(data);
-      await this._load();
-      this._status = { key: "status.imported" };
+      const res = await this._client.importPlan(data);
+      this._importWarnings = Array.isArray(res && res.warnings) ? res.warnings : [];
+      // a failed reload keeps the error status that _load set
+      if (await this._load()) this._status = { key: "status.imported" };
     } catch (err) {
       const m = mapError(err);
       this._status = { key: m.i18nKey, error: true, detail: m.message };
     } finally {
       this._busy = false;
+      this._saving = false;
     }
   }
 
@@ -516,8 +595,28 @@ export class PresencePlannerPanel extends LitElement {
         ? html`<div class="banner" role="alert"><span>${t("banner.remote_changed")}</span><button @click=${() => this._load()}>${t("action.reload")}</button></div>`
         : nothing}
       ${!this.isAdmin ? html`<div class="banner" role="note"><span>${t("banner.read_only")}</span></div>` : nothing}
-      ${st.loading && !st.plan ? html`<div class="empty">${t("status.loading")}</div>` : st.error && !st.plan ? this._renderError() : !st.plan ? this._renderNoPlan() : this._renderBody()}
+      ${this._renderImportWarnings()}
+      ${st.loading && !S.hasPlan(st) ? html`<div class="empty">${t("status.loading")}</div>` : st.error && !S.hasPlan(st) ? this._renderError() : !S.hasPlan(st) ? this._renderNoPlan() : this._renderBody()}
       ${this._renderHelp()}
+    </div>`;
+  }
+
+  /** Warnings of the last import (skipped rooms, doors that fit no wall, ...), grouped and dismissible. */
+  _renderImportWarnings() {
+    const t = this.t;
+    const groups = S.groupWarnings(this._importWarnings);
+    if (!groups.length) return nothing;
+    const label = (g) => {
+      // A code may carry a detail after the first colon, e.g. "placement_skipped:binary_sensor.hall".
+      const i = g.code.indexOf(":");
+      const code = i < 0 ? g.code : g.code.slice(0, i);
+      const key = `import.warning.${code}`;
+      return (t.has(key) ? t(key, { entity: i < 0 ? "" : g.code.slice(i + 1) }) : g.code) + (g.count > 1 ? ` (×${g.count})` : "");
+    };
+    return html`<div class="banner" role="status">
+      <span>${t("import.warnings")}</span>
+      <ul>${groups.map((g) => html`<li>${label(g)}</li>`)}</ul>
+      <button @click=${() => (this._importWarnings = [])}>${t("action.dismiss")}</button>
     </div>`;
   }
 
@@ -535,7 +634,7 @@ export class PresencePlannerPanel extends LitElement {
     const status = this._status;
     const statusText = status
       ? t(status.key, { detail: status.detail || "" }) + (status.error && status.detail && !t(status.key).includes("{detail}") ? ` (${status.detail})` : "")
-      : st.plan
+      : S.hasPlan(st)
         ? [st.revision !== null ? t("status.revision", { revision: st.revision }) : null, t("status.sensors", { count: S.sensorsOnFloor(st).length }), dirty ? t("status.unsaved") : null].filter(Boolean).join(" · ")
         : "";
     return html`<header class="top">
@@ -550,7 +649,7 @@ export class PresencePlannerPanel extends LitElement {
       <div class="actions">
         <button class="primary" ?disabled=${!dirty || this._busy || !this.isAdmin} @click=${() => this.save()}>${t("action.save")}</button>
         <button ?disabled=${(!dirty && !st.remoteChanged) || this._busy} @click=${() => this.reset()}>${t("action.reset")}</button>
-        <button ?disabled=${!st.plan || this._busy} @click=${() => this.exportPlan()}>${t("action.export")}</button>
+        <button ?disabled=${!(st.plan || (st.planDirty && this.isAdmin)) || this._busy} @click=${() => this.exportPlan()}>${t("action.export")}</button>
         <button ?disabled=${this._busy || !this.isAdmin} @click=${() => this._pickImport()}>${t("action.import")}</button>
         <input id="import-file" type="file" accept=".json,application/json" hidden @change=${(e) => this._importFile(e)} />
       </div>
@@ -575,7 +674,8 @@ export class PresencePlannerPanel extends LitElement {
 
   _startOwnPlan() {
     const plan = { version: 1, settings: { wall_exterior: 0.24, wall_interior: 0.12 }, floors: [{ id: "f1", name: this.t("floor.default_name"), ha_floor: null, elevation: 0, height: 2.5, rooms: [], openings: [], walls: [], furniture: [], outdoor: [], background: null }] };
-    this._setState({ ...this._s, plan, editPlan: plan, floorId: "f1", planDirty: true, tab: "editor" });
+    // `plan` is the saved baseline from the server and stays null until the first save
+    this._setState({ ...this._s, editPlan: plan, floorId: "f1", planDirty: true, tab: "editor", loading: false });
   }
 
   _renderBody() {

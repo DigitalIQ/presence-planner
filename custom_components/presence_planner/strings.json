@@ -34,6 +34,10 @@
     "import_neonplan": {
       "title": "Import your NeonPlan floor plan",
       "description": "Presence Planner no longer reads NeonPlan 3D live. Open NeonPlan 3D, export the floor plan or a backup as a file, then open the Presence Planner panel and choose **Import**. Your sensors and settings come back with it."
+    },
+    "stored_data_rejected": {
+      "title": "Stored floor plan or sensors rejected",
+      "description": "Presence Planner could not use the floor plan or the sensor list it saved earlier, for example because it exceeds the current limits. The data is still in its storage file and stays untouched, but it is not used. Saving a new floor plan or new sensors in the panel, or importing a file, replaces the rejected part. The Home Assistant log names the reason."
     }
   },
   "entity": {

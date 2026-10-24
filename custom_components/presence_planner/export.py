@@ -262,6 +262,26 @@ def from_neonplan_import(data: dict[str, Any]) -> tuple[dict[str, Any], list[str
     return {"version": 1, "settings": {"wall_exterior": 0.24, "wall_interior": 0.12}, "floors": floors}, warnings
 
 
+# keys that only a NeonPlan building has; a pp-plan has none of them
+_BUILDING_FLOOR_KEYS = ("placements", "cut_height")
+_BUILDING_KEYS = ("building", "energy", "presence")
+
+
+def _is_native_plan(data: dict[str, Any]) -> bool:
+    """A bare pp-plan (as saved by the editor): version 1 without any mark of a NeonPlan building."""
+    floors = data.get("floors")
+    if data.get("version") != 1 or not isinstance(floors, list) or any(k in data for k in _BUILDING_KEYS):
+        return False
+    return not any(
+        isinstance(floor, dict)
+        and (
+            any(k in floor for k in _BUILDING_FLOOR_KEYS)
+            or any(isinstance(room, dict) and "floor_material" in room for room in floor.get("rooms") or [])
+        )
+        for floor in floors
+    )
+
+
 def _import_data(data: dict[str, Any]) -> tuple[dict[str, Any], list[str], dict[str, Any] | None]:
     """Own plan from the NeonPlan import format, a NeonPlan building (or backup / get result) or a pp-plan.
 
@@ -279,6 +299,9 @@ def _import_data(data: dict[str, Any]) -> tuple[dict[str, Any], list[str], dict[
     if data.get("format") == IMPORT_FORMAT:
         plan, warnings = from_neonplan_import(data)
         return plan, warnings, None
+    if _is_native_plan(data):
+        # kept as it is: outdoor areas, the background and openings in free walls have no NeonPlan building form
+        return copy.deepcopy(data), [], None
     building = data.get("building") if isinstance(data.get("building"), dict) else data
     if building.get("version") == 1 and isinstance(building.get("floors"), list):
         try:

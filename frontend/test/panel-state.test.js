@@ -149,9 +149,8 @@ test("keyPatch moves and rotates", () => {
   assert.equal(S.keyPatch(s, "x"), null);
 });
 
-test("remote revision: reload when clean, banner when dirty, ignore own revision", () => {
+test("remote revision: reload when clean, banner when dirty", () => {
   const st = loaded();
-  assert.equal(S.onRemoteRevision(st, 3).reload, false);
   assert.equal(S.onRemoteRevision(st, 4).reload, true);
   const dirty = S.updateSensor(st, "binary_sensor.a", { x: 2 });
   const r = S.onRemoteRevision(dirty, 4);

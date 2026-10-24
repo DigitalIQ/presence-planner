@@ -85,3 +85,26 @@ def test_export_pp_plan_reimport_as_plan() -> None:
     plan, warnings, building = import_data(copy.deepcopy(DEMO["plan"]))
     assert building is None and warnings == []
     assert to_neonplan_import(plan) == to_neonplan_import(DEMO["plan"])
+
+
+def native_plan() -> dict:
+    """The demo flat with the parts that have no NeonPlan building form."""
+    plan = copy.deepcopy(DEMO["plan"])
+    floor = plan["floors"][0]
+    floor["outdoor"] = [{"id": "garden", "points": [[0, 0], [2, 0], [2, 2]]}]
+    floor["background"] = {"image": "data:image/png;base64,aGVsbG8=", "width": 8, "opacity": 0.5}
+    floor["openings"].append({"id": "d_chimney", "wall": "chimney", "offset": 0.3, "width": 0.3, "type": "door"})
+    return plan
+
+
+def test_raw_pp_plan_is_imported_as_it_is() -> None:
+    """The building path dropped outdoor areas and the background and failed on openings in free walls."""
+    plan = native_plan()
+    imported, warnings, building = import_data(copy.deepcopy(plan))
+    assert imported == plan and warnings == [] and building is None
+
+
+def test_building_with_placements_is_still_a_building() -> None:
+    building = demo_building(DEMO["plan"], DEMO["sensors"])
+    plan, _warnings, found = import_data(copy.deepcopy(building))
+    assert found is not None and plan["floors"][0]["outdoor"] == []

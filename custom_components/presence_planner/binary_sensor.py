@@ -71,15 +71,31 @@ class RoomOccupancySensor(PresencePlannerRoomEntity, BinarySensorEntity):
             for entity_id in tracked - self._tracked:
                 state = self.hass.states.get(entity_id)
                 since = state.last_changed.timestamp() if state is not None else None
-                self._fusion.seed(entity_id, _is_on(state), since)
+                # after a restart the timestamps say nothing about who turned on first
+                self._fusion.seed(entity_id, _is_on(state), since, settled=True)
             if tracked:
                 self._unsub_track = async_track_state_change_event(self.hass, list(tracked), self._state_changed)
             self._tracked = tracked
         self._apply(self._fusion.step())
+        self._update_available()
+
+    def _update_available(self) -> None:
+        """Unavailable without own sensors, or while none of them reports a state."""
+        if self.hass is None:
+            return
+        self._attr_available = any(_is_on(self.hass.states.get(e)) is not None for e in self._fusion.own_sensors)
 
     @callback
     def _state_changed(self, event: Event[EventStateChangedData]) -> None:
-        self._apply(self._fusion.update(event.data["entity_id"], _is_on(event.data["new_state"])))
+        entity_id, old, new = event.data["entity_id"], event.data["old_state"], event.data["new_state"]
+        if _is_on(new) and _is_on(old) is None:
+            # back from unavailable or unknown (a reconnect), or its first state: already on, but not a fresh
+            # on that could be compared with the neighbours' times
+            self._fusion.seed(entity_id, True, new.last_changed.timestamp(), settled=True)
+            self._apply(self._fusion.step())
+        else:
+            self._apply(self._fusion.update(entity_id, _is_on(new)))
+        self._update_available()
         self.async_write_ha_state()
 
     def _apply(self, result: Any) -> None:

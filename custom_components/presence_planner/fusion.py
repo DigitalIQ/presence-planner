@@ -19,6 +19,8 @@ Reading of the rules where the contract leaves room:
 - A candidate that became valid (all t off) stays valid until s turns off.
 - A valid on that turns into an echo candidate while s is still on (t back within the window, a door opened)
   does not start the hold: nothing was really there.
+- A sensor whose on was seeded as settled (HA start, back from unavailable) has an unknown real start: it is
+  never an echo and never the cause of one. Its timestamp is only the moment we learned about it.
 """
 
 from __future__ import annotations
@@ -70,6 +72,8 @@ class RoomFusion:
         # sensor -> time of the current on (None = off)
         self._on_since: dict[str, float | None] = {}
         self._history: dict[str, deque[float]] = {}
+        # sensors whose current on has an unknown real start: no echo relations in either direction
+        self._settled: set[str] = set()
         # contact entity -> raw state (True = on, False = off, None = unknown)
         self._contacts: dict[str, bool | None] = {}
         self._sources: list[str] = []
@@ -104,6 +108,11 @@ class RoomFusion:
         self.step()
 
     @property
+    def own_sensors(self) -> list[str]:
+        """The own sensors of the room."""
+        return list(self._own)
+
+    @property
     def tracked_entities(self) -> set[str]:
         """All entities whose states matter: own sensors, neighbour sensors that can cause echoes, contacts."""
         entities = set(self._own)
@@ -119,13 +128,21 @@ class RoomFusion:
         """Current time of the injected clock."""
         return self._clock()
 
-    def seed(self, entity_id: str, is_on: bool | None, since: float | None = None) -> None:
-        """Set a known state without counting it as a fresh transition (start-up, reconfiguration)."""
+    def seed(self, entity_id: str, is_on: bool | None, since: float | None = None, *, settled: bool = False) -> None:
+        """Set a known state without counting it as a fresh transition (start-up, reconfiguration).
+
+        settled: the real start of an on is unknown (HA just started, the sensor came back from unavailable), so
+        `since` says nothing about the order of events. Such a sensor takes no part in echo relations.
+        """
         if entity_id in self._door_contacts.values():
             self._contacts[entity_id] = is_on
+        elif is_on and settled:
+            self._on_since[entity_id] = self.now() if since is None else since
+            self._settled.add(entity_id)
         elif is_on:
             when = self.now() if since is None else since
             self._on_since[entity_id] = when
+            self._settled.discard(entity_id)
             self._history.setdefault(entity_id, deque(maxlen=_HISTORY)).append(when)
         else:
             self._turned_off(entity_id)
@@ -146,6 +163,7 @@ class RoomFusion:
 
     def _turned_off(self, entity_id: str) -> None:
         self._on_since[entity_id] = None
+        self._settled.discard(entity_id)
         self._was_echo.discard(entity_id)
         self._confirmed.discard(entity_id)
 
@@ -174,7 +192,7 @@ class RoomFusion:
     def _causes(self, sensor: str) -> list[str]:
         """Neighbour sensors that make the current on of sensor an echo (empty = valid)."""
         s_on = self._on_since.get(sensor)
-        if s_on is None:
+        if s_on is None or sensor in self._settled:
             return []
         causes = []
         for room, detail in self._spill.get(sensor, {}).items():
@@ -183,7 +201,7 @@ class RoomFusion:
             if self._share(detail) < self.spill_threshold:
                 continue
             for other in self._room_sensors.get(room, []):
-                if other == sensor or other in causes:
+                if other == sensor or other in causes or other in self._settled:
                     continue
                 t_on = self._on_since.get(other)
                 if t_on is None:

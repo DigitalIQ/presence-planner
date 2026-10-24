@@ -34,6 +34,12 @@ SENSOR_DEVICE_CLASSES: Final = frozenset({"occupancy", "presence", "motion"})
 # repair issue for entries that used NeonPlan as live source before 0.2
 ISSUE_IMPORT_NEONPLAN: Final = "import_neonplan"
 
+# repair issue while a stored plan or sensor list was rejected on load (kept in the store, not used)
+ISSUE_STORED_DATA_REJECTED: Final = "stored_data_rejected"
+
+# fields the model fills in from the profile; they are never stored
+RESOLVED_ONLY_FIELDS: Final = ("ceiling_fov", "fov_v_assumed")
+
 # entities per room (unique id: <entry>_<floor>_<room>_<key>)
 ENTITY_KEYS: Final = ("coverage", "misfire_risk", "occupancy")
 

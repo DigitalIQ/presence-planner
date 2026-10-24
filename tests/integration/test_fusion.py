@@ -264,3 +264,39 @@ def test_late_neighbour_on_does_not_reclassify() -> None:
     result = fusion.update(HALL, True)
     assert result.occupied
     assert result.sources == [KITCHEN]
+
+
+def test_settled_on_is_no_echo():
+    """A sensor back from unavailable that is already on has no known start: it is not compared with the hall."""
+    fusion, clock = make()
+    fusion.update(HALL, True)
+    clock.tick(2)
+    fusion.seed(KITCHEN, True, clock.t, settled=True)
+    result = fusion.step()
+    assert result.occupied
+    assert result.sources == [KITCHEN]
+    assert result.suppressed_echoes == []
+
+
+def test_settled_neighbour_causes_no_echo():
+    """After a restart both sensors are on with last_changed within a moment: nobody is the cause."""
+    fusion, clock = make()
+    fusion.seed(HALL, True, clock.t - 1, settled=True)
+    clock.tick(1)
+    fusion.seed(KITCHEN, True, clock.t, settled=True)
+    assert fusion.step().sources == [KITCHEN]
+    # the same pair seeded the old way would be an echo
+    fusion, clock = make()
+    fusion.seed(HALL, True, clock.t - 1)
+    fusion.seed(KITCHEN, True, clock.t)
+    assert fusion.step().suppressed_echoes == [KITCHEN]
+
+
+def test_settled_sensor_is_fresh_again_after_it_went_off():
+    fusion, clock = make()
+    fusion.seed(HALL, True, clock.t, settled=True)
+    fusion.update(HALL, False)
+    fusion.update(HALL, True)
+    clock.tick(2)
+    result = fusion.update(KITCHEN, True)
+    assert result.suppressed_echoes == [KITCHEN]

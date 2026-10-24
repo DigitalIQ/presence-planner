@@ -59,6 +59,7 @@ async def test_setup_and_unload(hass: HomeAssistant, config_entry: MockConfigEnt
 
 async def test_entities_per_room(hass: HomeAssistant, config_entry: MockConfigEntry, stored_demo: dict) -> None:
     """Three entities per room, one device per floor, names from the room names."""
+    hass.states.async_set("binary_sensor.demo_living_presence", "off", {"device_class": "presence"})
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
     registry = er.async_get(hass)

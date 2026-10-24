@@ -46,3 +46,29 @@ def test_resolve_does_not_mutate_input_and_unknown_profile_is_custom():
     out = resolve_sensor(src, profiles)
     assert src == {"profile": "nope"}
     assert out["fov_h"] == 120 and out["reach"] == 6
+
+
+def test_resolve_ceiling_cone_follows_an_explicit_fov_h():
+    """The user's fov_h of a ceiling mount wins over the profile's ceiling angle; stale stored cones are dropped."""
+    profiles = load_profiles()
+    s = resolve_sensor({"profile": "aqara_fp400", "mount": "ceiling", "fov_h": 90}, profiles)
+    assert (s["fov_h"], s["ceiling_fov"], s["reach"]) == (90, 90, 4)
+    stale = resolve_sensor({"profile": "aqara_fp400", "mount": "ceiling", "fov_h": 100, "ceiling_fov": 120}, profiles)
+    assert stale["ceiling_fov"] == 100
+    # a wall mount never carries a cone angle, and a profile without ceiling block falls back to its own fields
+    assert "ceiling_fov" not in resolve_sensor({"profile": "aqara_fp400", "mount": "wall", "ceiling_fov": 120}, profiles)
+    assert "ceiling_fov" not in resolve_sensor({"profile": "aqara_p1", "mount": "ceiling", "ceiling_fov": 120}, profiles)
+
+
+def test_detection_of_a_ceiling_mount_uses_the_overridden_fov_h():
+    from core_helpers import make_plan, rect
+
+    from custom_components.presence_planner.core import build_model, detect
+
+    base = {"profile": "aqara_fp400", "mount": "ceiling", "x": 5, "z": 5, "height": 2.6, "tilt": 90, "phi": 0}
+    wide = resolve_sensor({**base, "fov_h": 150}, load_profiles())
+    narrow = resolve_sensor({**base, "fov_h": 60, "ceiling_fov": 120}, load_profiles())
+    point = (5 + 2.4, 1.3, 5)  # 61.5 degrees off the vertical
+    m = build_model(make_plan([rect("r", 0, 0, 10, 10)]), "f")
+    assert detect(m, wide, point, {}) > 0
+    assert detect(m, narrow, point, {}) == 0.0

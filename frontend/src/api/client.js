@@ -98,8 +98,9 @@ export class PlannerClient {
     return this._call("save_plan", { plan });
   }
 
-  exportPlan() {
-    return this._call("export");
+  /** `plan` (admins only) exports that plan instead of the saved one, e.g. unsaved editor changes. */
+  exportPlan(plan) {
+    return this._call("export", plan ? { plan } : {});
   }
 
   importPlan(data) {

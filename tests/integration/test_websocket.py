@@ -269,9 +269,17 @@ async def test_neonplan_runtime_data_is_ignored(
 
 
 async def test_migration_from_neonplan_source(
-    hass: HomeAssistant, hass_ws_client, auto_entry: MockConfigEntry, demo_plan, demo_sensors
+    hass: HomeAssistant, hass_ws_client, hass_storage, auto_entry: MockConfigEntry, demo_plan, demo_sensors
 ) -> None:
-    """A 0.1.x entry drops the source option, keeps its entities and asks for a NeonPlan import once."""
+    """A 0.1.x entry drops the source option, keeps its entities and asks for a NeonPlan import once.
+
+    `auto` counts as NeonPlan here because the store holds sensor extras, which 0.1.x saved only for NeonPlan.
+    """
+    hass_storage[DOMAIN] = {
+        "version": 1,
+        "key": DOMAIN,
+        "data": {"plan": None, "sensors": {demo_sensors[0]["entity_id"]: {"profile": "aqara_fp300"}}, "own_sensors": []},
+    }
     room = demo_plan["floors"][0]["rooms"][0]["id"]
     registry = er.async_get(hass)
     kept = registry.async_get_or_create(

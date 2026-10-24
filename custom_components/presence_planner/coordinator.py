@@ -29,7 +29,7 @@ from .const import (
 from .core import build_model, evaluate, load_profiles, resolve_sensor, spill_detail
 from .devices import is_presence_entity, suggest_profile
 from .neonplan import placement_to_sensor
-from .validation import validate_plan, validate_sensors
+from .validation import PlanValidationError, validate_plan, validate_sensors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -172,9 +172,18 @@ class PresencePlannerCoordinator:
     async def async_recompute(self) -> None:
         """Compute the model results in the executor and notify the entities."""
         plan, sensors = copy.deepcopy(self.plan), copy.deepcopy(self.sensors)
-        self.results = await self.hass.async_add_executor_job(compute, plan, sensors, self.model_opts)
+        try:
+            self.results = await self.hass.async_add_executor_job(compute, plan, sensors, self.model_opts)
+        except PlanValidationError as err:
+            # a stored plan that the budgets (tightened since it was saved) no longer allow is kept but not computed
+            _LOGGER.error("Presence Planner plan or sensors not computed: %s", err)
+            self.results = {}
         for update in list(self._listeners):
-            update()
+            # one broken entity must not keep the others from their new results
+            try:
+                update()
+            except Exception:
+                _LOGGER.exception("Presence Planner entity failed to update")
 
     @callback
     def async_add_listener(self, update: Callable[[], None]) -> Callable[[], None]:
@@ -205,14 +214,55 @@ class PresencePlannerCoordinator:
             self.async_changed()
 
     async def async_import(
-        self, plan: dict[str, Any], building: dict[str, Any] | None, sensors: list[dict[str, Any]] | None = None
+        self,
+        plan: dict[str, Any],
+        building: dict[str, Any] | None,
+        sensors: list[dict[str, Any]] | None = None,
+        warnings: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Serialize replacement of the complete own snapshot."""
+        """Serialize replacement of the complete own snapshot; skipped placements are added to `warnings`."""
         async with self._write_lock:
-            return await self._async_import(plan, building, sensors)
+            return await self._async_import(plan, building, sensors, [] if warnings is None else warnings)
+
+    def _placement_sensors(
+        self, plan: dict[str, Any], building: dict[str, Any], warnings: list[str]
+    ) -> list[dict[str, Any]]:
+        """Own sensors from the presence placements of a NeonPlan building.
+
+        A placement that cannot be read, or one that repeats an entity, is skipped with a warning (the first
+        placement of an entity wins) instead of rejecting the whole file.
+        """
+        heights = {f["id"]: float(f.get("height") or 2.5) for f in plan.get("floors") or []}
+        sensors: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for floor in building.get("floors") or []:
+            placements = floor.get("placements")
+            for placement in placements if isinstance(placements, list) else []:
+                entity_id = placement.get("entity_id") if isinstance(placement, dict) else None
+                if not isinstance(entity_id, str) or not is_presence_entity(self.hass, entity_id):
+                    continue
+                if entity_id in seen:
+                    warnings.append(f"duplicate_placement:{entity_id}")
+                    continue
+                floor_id = str(floor["id"])
+                try:
+                    sensor = placement_to_sensor(
+                        floor_id, placement, self.store.extras.get(entity_id), heights.get(floor_id, 2.5)
+                    )
+                    validate_sensors([sensor])
+                except (KeyError, TypeError, ValueError):  # includes PlanValidationError
+                    warnings.append(f"placement_skipped:{entity_id}")
+                    continue
+                seen.add(entity_id)
+                sensors.append(sensor)
+        return sensors
 
     async def _async_import(
-        self, plan: dict[str, Any], building: dict[str, Any] | None, sensors: list[dict[str, Any]] | None = None
+        self,
+        plan: dict[str, Any],
+        building: dict[str, Any] | None,
+        sensors: list[dict[str, Any]] | None,
+        warnings: list[str],
     ) -> list[dict[str, Any]]:
         """Store an imported plan as own plan; sensors from a NeonPlan file's placements become own sensors.
 
@@ -221,17 +271,7 @@ class PresencePlannerCoordinator:
         validate_plan(plan)
         sensors = list(sensors or [])
         if building is not None:
-            heights = {f["id"]: float(f.get("height") or 2.5) for f in plan.get("floors") or []}
-            for floor in building.get("floors") or []:
-                for placement in floor.get("placements") or []:
-                    entity_id = placement.get("entity_id")
-                    if isinstance(entity_id, str) and is_presence_entity(self.hass, entity_id):
-                        floor_id = str(floor["id"])
-                        sensors.append(
-                            placement_to_sensor(
-                                floor_id, placement, self.store.extras.get(entity_id), heights.get(floor_id, 2.5)
-                            )
-                        )
+            sensors.extend(self._placement_sensors(plan, building, warnings))
         await self.store.async_set_snapshot(plan, sensors)
         self.async_changed()
         return sensors
