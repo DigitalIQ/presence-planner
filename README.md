@@ -102,6 +102,10 @@ The bundle diff checks an already committed build. HA and the test plugin are pi
 
 Report bugs with your HA version, the Presence Planner version and reproducible steps under [Issues](https://github.com/DigitalIQ/presence-planner/issues). Use synthetic data for public examples, and remove real floor plans and credentials before sharing.
 
+## Support
+
+If Presence Planner is useful to you, you can [buy me a coffee](https://buymeacoffee.com/manuel_8472). Presence Planner stays free either way.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
